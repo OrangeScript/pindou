@@ -15,6 +15,18 @@ export interface RgbColor {
   g: number;
   b: number;
 }
+export interface LabColor {
+  L: number;
+  a: number;
+  b: number;
+}
+
+export interface PaletteColor {
+  key: string;
+  hex: string;
+  rgb: RgbColor;
+  lab?: LabColor; // 核心优化：用于缓存计算后的 LAB 值，避免重复计算
+}
 
 export interface PaletteColor {
   key: string;
@@ -49,29 +61,7 @@ export function colorDistance(rgb1: RgbColor, rgb2: RgbColor): number {
 }
 
 // 查找最接近的颜色
-export function findClosestPaletteColor(
-  targetRgb: RgbColor,
-  palette: PaletteColor[]
-): PaletteColor {
-  if (!palette || palette.length === 0) {
-      console.error("findClosestPaletteColor: Palette is empty or invalid!");
-      // 提供一个健壮的回退
-      return { key: 'ERR', hex: '#000000', rgb: { r: 0, g: 0, b: 0 } };
-  }
 
-  let minDistance = Infinity;
-  let closestColor = palette[0];
-
-  for (const paletteColor of palette) {
-    const distance = colorDistance(targetRgb, paletteColor.rgb);
-    if (distance < minDistance) {
-      minDistance = distance;
-      closestColor = paletteColor;
-    }
-    if (distance === 0) break; // 完全匹配，提前退出
-  }
-  return closestColor;
-}
 
 
 // --- 核心像素化计算逻辑 ---
@@ -147,6 +137,58 @@ function calculateCellRepresentativeColor(
     }
 }
 
+// --- 颜色空间转换核心逻辑 ---
+
+// RGB 转 XYZ (基于 D65 标准光源)
+function rgbToXyz(rgb: RgbColor) {
+  let r = rgb.r / 255;
+  let g = rgb.g / 255;
+  let b = rgb.b / 255;
+
+  // 伽马反校正
+  r = r > 0.04045 ? Math.pow(((r + 0.055) / 1.055), 2.4) : (r / 12.92);
+  g = g > 0.04045 ? Math.pow(((g + 0.055) / 1.055), 2.4) : (g / 12.92);
+  b = b > 0.04045 ? Math.pow(((b + 0.055) / 1.055), 2.4) : (b / 12.92);
+
+  r *= 100;
+  g *= 100;
+  b *= 100;
+
+  const x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375;
+  const y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750;
+  const z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041;
+
+  return { x, y, z };
+}
+
+// XYZ 转 LAB
+function xyzToLab(x: number, y: number, z: number): LabColor {
+  // D65 参考白点
+  const refX = 95.047;
+  const refY = 100.000;
+  const refZ = 108.883;
+
+  let xNorm = x / refX;
+  let yNorm = y / refY;
+  let zNorm = z / refZ;
+
+  xNorm = xNorm > 0.008856 ? Math.pow(xNorm, 1/3) : (7.787 * xNorm) + (16 / 116);
+  yNorm = yNorm > 0.008856 ? Math.pow(yNorm, 1/3) : (7.787 * yNorm) + (16 / 116);
+  zNorm = zNorm > 0.008856 ? Math.pow(zNorm, 1/3) : (7.787 * zNorm) + (16 / 116);
+
+  const L = (116 * yNorm) - 16;
+  const a = 500 * (xNorm - yNorm);
+  const b = 200 * (yNorm - zNorm);
+
+  return { L, a, b };
+}
+
+// 完整的 RGB 转 LAB 封装
+export function rgbToLab(rgb: RgbColor): LabColor {
+  const { x, y, z } = rgbToXyz(rgb);
+  return xyzToLab(x, y, z);
+}
+
 /**
  * 根据原始图像数据、网格尺寸、调色板和模式计算像素化网格数据。
  * @param originalCtx 原始图像的 Canvas 2D Context
@@ -218,3 +260,54 @@ export function calculatePixelGrid(
     console.log(`Pixel grid calculation complete for mode: ${mode}`);
     return mappedData;
 } 
+
+// --- 颜色匹配逻辑 ---
+
+// 计算 Delta E 76 色差 (LAB 空间下的欧几里得距离)
+export function deltaE76(lab1: LabColor, lab2: LabColor): number {
+  const weightL = 1.25; 
+  
+  const dL = (lab1.L - lab2.L) * weightL; 
+  const da = lab1.a - lab2.a;
+  const db = lab1.b - lab2.b;
+  
+  return Math.sqrt(dL * dL + da * da + db * db);
+}
+
+// 查找最接近的颜色 (带性能优化)
+export function findClosestPaletteColor(
+  targetRgb: RgbColor,
+  palette: PaletteColor[]
+): PaletteColor {
+  if (!palette || palette.length === 0) {
+      console.error("findClosestPaletteColor: Palette is empty or invalid!");
+      return { key: 'ERR', hex: '#000000', rgb: { r: 0, g: 0, b: 0 } };
+  }
+
+  // 1. 将当前网格的目标颜色转为 LAB
+  const targetLab = rgbToLab(targetRgb);
+
+  let minDistance = Infinity;
+  let closestColor = palette[0];
+
+  for (const paletteColor of palette) {
+    // 2. 性能优化核心：按需计算并缓存调色板的 LAB 值
+    // 这样每个色号只会在第一次遇到时计算一次，后续全部直接读取
+    if (!paletteColor.lab) {
+        paletteColor.lab = rgbToLab(paletteColor.rgb);
+    }
+
+    // 3. 在 LAB 空间计算距离
+    const distance = deltaE76(targetLab, paletteColor.lab);
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestColor = paletteColor;
+    }
+    
+    // 如果完全匹配，直接提前退出
+    if (distance === 0) break; 
+  }
+  
+  return closestColor;
+}
