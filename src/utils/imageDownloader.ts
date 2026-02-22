@@ -248,14 +248,21 @@ export async function downloadImage({
     const statsPadding = 20;
     let statsHeight = 0;
     
-    // 预先计算用于字体大小的变量
+    // 預先計算用於字體大小的變量
     const preCalcWidth = N * downloadCellSize + axisLabelSize;
     const preCalcAvailableWidth = preCalcWidth - (statsPadding * 2);
     
-    // 计算字体大小 - 与颜色统计区域保持一致
+    // 計算字體大小 - 增加 Math.min(3, ...) 限制最大放大倍數，避免字體無限放大
     const baseStatsFontSize = 13;
-    const widthFactor = Math.max(0, preCalcAvailableWidth - 350) / 600;
+    const widthFactor = Math.min(3, Math.max(0, preCalcAvailableWidth - 350) / 600);
     const statsFontSize = Math.floor(baseStatsFontSize + (widthFactor * 10));
+    
+    const baseSwatchSize = 18;
+    const swatchSize = Math.floor(baseSwatchSize + (widthFactor * 10)); 
+
+    // 【關鍵修正】動態計算每列需要的最小寬度，不再寫死 160
+    // 計算公式：色塊寬度 + 預估文字寬度(約6個字元) + 安全間距
+    const minColumnWidth = Math.max(160, swatchSize + (statsFontSize * 6) + 30);
     
     // 计算额外边距，确保坐标数字完全显示（四边都需要）
     const extraLeftMargin = showCoordinates ? Math.max(20, statsFontSize * 2) : 0; // 左侧额外边距
@@ -286,29 +293,22 @@ export async function downloadImage({
     
     // 计算统计区域的大小
     // 计算统计区域的大小
+   // 計算統計區域的大小
     if (includeStats && colorCounts) {
       const colorKeys = Object.keys(colorCounts);
       
-      // 修改：减少顶部间距，让它离网格近一点
       const statsTopMargin = 15; 
       
-      // 修改：增加列的密度。原逻辑除以250，现在除以160，让一行能放下更多色块
-      const numColumns = Math.max(1, Math.floor(preCalcAvailableWidth / 160));
-      
-      const baseSwatchSize = 18;
-      // 保持之前的动态大小逻辑，但稍微调小一点增量
-      const swatchSize = Math.floor(baseSwatchSize + (widthFactor * 10)); 
+      // 【修改】使用剛剛算好的動態欄寬 minColumnWidth，取代固定的 160
+      const numColumns = Math.max(1, Math.floor(preCalcAvailableWidth / minColumnWidth));
       
       const numRows = Math.ceil(colorKeys.length / numColumns);
       
-      // 修改：行高稍微紧凑一点
       const statsRowHeight = swatchSize + 12; 
-      
-      const titleHeight = 30; // 标题行高度
-      // 修改：去掉 footerHeight，因为我们把总数移到标题里了
+      const titleHeight = 30; 
       const footerHeight = 0; 
       
-      // 计算总高度
+      // 計算總高度
       statsHeight = titleHeight + (numRows * statsRowHeight) + footerHeight + (statsPadding * 2) + statsTopMargin;
     }
   
@@ -604,7 +604,7 @@ export async function downloadImage({
       const availableStatsWidth = downloadWidth - (statsPadding * 2);
       
       // 使用更紧凑的列宽计算 (160px)
-      const renderNumColumns = Math.max(1, Math.floor(availableStatsWidth / 160));
+      const renderNumColumns = Math.max(1, Math.floor(availableStatsWidth / minColumnWidth));
       const itemWidth = Math.floor(availableStatsWidth / renderNumColumns);
 
       // 计算色块大小

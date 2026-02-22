@@ -611,7 +611,7 @@ export default function Home() {
         setTotalBeadCount(0);
         setInitialGridColorKeys(new Set()); // ++ 重置初始键 ++
         // ++ 重置横轴格子数量为默认值 ++
-        const defaultGranularity = 32;
+        const defaultGranularity = 16;
         setGranularity(defaultGranularity);
         setGranularityInput(defaultGranularity.toString());
         setRemapTrigger(prev => prev + 1); // Trigger full remap for new image
