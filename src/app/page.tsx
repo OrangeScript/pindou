@@ -8,18 +8,22 @@ import InstallPWA from '../components/InstallPWA';
 import {
   PixelationMode,
   calculatePixelGrid,
-  RgbColor,
   PaletteColor,
   MappedPixel,
   hexToRgb,
-  colorDistance,
-  findClosestPaletteColor
+  findClosestPaletteColor,
+  MIN_GRID_GRANULARITY,
+  MAX_GRID_GRANULARITY,
+  getSafeProcessingDimensions,
+  mergeSimilarMappedColors,
+  countMappedColors
 } from '../utils/pixelation';
 
 // 导入新的类型和组件
 import { GridDownloadOptions } from '../types/downloadTypes';
 import DownloadSettingsModal, { gridLineColorOptions } from '../components/DownloadSettingsModal';
-import { downloadImage, importCsvData } from '../utils/imageDownloader';
+import { downloadImage, downloadSplitImages, importCsvData } from '../utils/imageDownloader';
+import BatchUploadModal from '../components/BatchUploadModal';
 
 import { 
   colorSystemOptions, 
@@ -142,11 +146,15 @@ export default function Home() {
     showCellNumbers: true,
     gridLineColor: gridLineColorOptions[0].value,
     includeStats: true, // 默认包含统计信息
-    exportCsv: false // 默认不导出CSV
+    exportCsv: false, // 默认不导出CSV
+    trimTransparent: true // 默认裁剪四周透明区域
   });
 
   // 新增：高亮相关状态
   const [highlightColorKey, setHighlightColorKey] = useState<string | null>(null);
+
+  // 新增：批量处理弹窗状态
+  const [isBatchUploadOpen, setIsBatchUploadOpen] = useState<boolean>(false);
 
   // 新增：完整色板切换状态
   const [showFullPalette, setShowFullPalette] = useState<boolean>(false);
@@ -611,7 +619,7 @@ export default function Home() {
         setTotalBeadCount(0);
         setInitialGridColorKeys(new Set()); // ++ 重置初始键 ++
         // ++ 重置横轴格子数量为默认值 ++
-        const defaultGranularity = 16;
+        const defaultGranularity = 32;
         setGranularity(defaultGranularity);
         setGranularityInput(defaultGranularity.toString());
         setRemapTrigger(prev => prev + 1); // Trigger full remap for new image
@@ -665,8 +673,8 @@ export default function Home() {
   // ++ 修改：处理确认按钮点击的函数，同时处理两个参数 ++
   const handleConfirmParameters = () => {
     // 处理格子数
-    const minGranularity = 10;
-    const maxGranularity = 300;
+    const minGranularity = MIN_GRID_GRANULARITY;
+    const maxGranularity = MAX_GRID_GRANULARITY;
     let newGranularity = parseInt(granularityInput, 10);
 
     if (isNaN(newGranularity) || newGranularity < minGranularity) {
@@ -777,45 +785,46 @@ export default function Home() {
 
       // 动态调整画布尺寸：当格子数量大于100时，增加画布尺寸以保持每个格子的可见性
       const baseWidth = 500;
-      const minCellSize = 4; // 每个格子的最小尺寸（像素）
-      const recommendedCellSize = 6; // 推荐的格子尺寸（像素）
-      
-      let outputWidth = baseWidth;
-      
-      // 如果格子数量大于100，计算需要的画布宽度
-      if (N > 100) {
-        const requiredWidthForMinSize = N * minCellSize;
-        const requiredWidthForRecommendedSize = N * recommendedCellSize;
-        
-        // 使用推荐尺寸，但不超过屏幕宽度的90%（最大1200px）
-        const maxWidth = Math.min(1200, window.innerWidth * 0.9);
-        outputWidth = Math.min(maxWidth, Math.max(baseWidth, requiredWidthForRecommendedSize));
-        
-        // 确保不小于最小要求
-        outputWidth = Math.max(outputWidth, requiredWidthForMinSize);
-        
-        console.log(`Large grid detected (${N} columns). Adjusted canvas width from ${baseWidth} to ${outputWidth}px (cell size: ${Math.round(outputWidth / N)}px)`);
-      }
-      
-      const outputHeight = Math.round(outputWidth * aspectRatio);
-      
-      // 在控制台提示用户画布尺寸变化
-      if (N > 100) {
-        console.log(`💡 由于格子数量较多 (${N}x${M})，画布已自动放大以保持清晰度。可以使用水平滚动查看完整图像。`);
-      }
-      originalCanvas.width = img.width; originalCanvas.height = img.height;
-      pixelatedCanvas.width = outputWidth; pixelatedCanvas.height = outputHeight;
-      console.log(`Canvas dimensions: Original ${img.width}x${img.height}, Output ${outputWidth}x${outputHeight}`);
+      const maxPreviewSide = 4096;
+      const maxGridSide = Math.max(N, M);
+      let outputWidth: number;
+      let outputHeight: number;
 
-      originalCtx.drawImage(img, 0, 0, img.width, img.height);
+      if (maxGridSide > 100) {
+        const previewCellSize = Math.min(6, maxPreviewSide / maxGridSide);
+        outputWidth = Math.max(1, Math.round(N * previewCellSize));
+        outputHeight = Math.max(1, Math.round(M * previewCellSize));
+        console.log(`Large grid detected (${N}x${M}). Preview canvas is ${outputWidth}x${outputHeight}px.`);
+      } else {
+        outputWidth = baseWidth;
+        outputHeight = Math.max(1, Math.round(outputWidth * aspectRatio));
+      }
+
+      const processingDimensions = getSafeProcessingDimensions(img.width, img.height);
+      if (processingDimensions.scale < 1) {
+        console.log(
+          `Large source image downscaled for processing: ${img.width}x${img.height} -> ${processingDimensions.width}x${processingDimensions.height}`
+        );
+      }
+
+      originalCanvas.width = processingDimensions.width;
+      originalCanvas.height = processingDimensions.height;
+      pixelatedCanvas.width = outputWidth;
+      pixelatedCanvas.height = outputHeight;
+      console.log(
+        `Canvas dimensions: Original ${img.width}x${img.height}, Processing ${processingDimensions.width}x${processingDimensions.height}, Output ${outputWidth}x${outputHeight}`
+      );
+
+      originalCtx.clearRect(0, 0, processingDimensions.width, processingDimensions.height);
+      originalCtx.drawImage(img, 0, 0, processingDimensions.width, processingDimensions.height);
       console.log("Original image drawn.");
 
       // 1. 使用calculatePixelGrid进行初始颜色映射
       console.log("Starting initial color mapping using calculatePixelGrid...");
       const initialMappedData = calculatePixelGrid(
           originalCtx,
-          img.width,
-          img.height,
+          processingDimensions.width,
+          processingDimensions.height,
           N,
           M,
           currentPalette, 
@@ -825,124 +834,13 @@ export default function Home() {
       console.log(`Initial data mapping complete using mode ${mode}. Starting global color merging...`);
 
       // --- 新的全局颜色合并逻辑 ---
-      const keyToRgbMap = new Map<string, RgbColor>();
-      const keyToColorDataMap = new Map<string, PaletteColor>();
-      currentPalette.forEach(p => {
-        keyToRgbMap.set(p.key, p.rgb);
-        keyToColorDataMap.set(p.key, p);
-      });
-
-      // 2. 统计初始颜色数量
-      const initialColorCounts: { [key: string]: number } = {};
-      initialMappedData.flat().forEach(cell => {
-          if (cell && cell.key && !cell.isExternal && cell.key !== TRANSPARENT_KEY) {
-              initialColorCounts[cell.key] = (initialColorCounts[cell.key] || 0) + 1;
-          }
-      });
-      console.log("Initial color counts:", initialColorCounts);
-
-      // 3. 创建一个颜色排序列表，按出现频率从高到低排序
-      const colorsByFrequency = Object.entries(initialColorCounts)
-          .sort((a, b) => b[1] - a[1])  // 按频率降序排序
-          .map(entry => entry[0]);      // 只保留颜色键
-      
-      if (colorsByFrequency.length === 0) {
-          console.log("No non-background colors found! Skipping merging.");
-      }
-
-      console.log("Colors sorted by frequency:", colorsByFrequency);
-      
-      // 4. 复制初始数据，准备合并
-      const mergedData: MappedPixel[][] = initialMappedData.map(row => 
-          row.map(cell => ({ ...cell, isExternal: cell.isExternal ?? false }))
-      );
-      
-      // 5. 处理相似颜色合并
-      const similarityThresholdValue = threshold;
-      
-      // 已被合并（替换）的颜色集合
-      const replacedColors = new Set<string>();
-      
-      // 对每个颜色按频率从高到低处理
-      for (let i = 0; i < colorsByFrequency.length; i++) {
-          const currentKey = colorsByFrequency[i];
-          
-          // 如果当前颜色已经被合并到更频繁的颜色中，跳过
-          if (replacedColors.has(currentKey)) continue;
-          
-          const currentRgb = keyToRgbMap.get(currentKey);
-          if (!currentRgb) {
-              console.warn(`RGB not found for key ${currentKey}. Skipping.`);
-              continue;
-          }
-          
-          // 检查剩余的低频颜色
-          for (let j = i + 1; j < colorsByFrequency.length; j++) {
-              const lowerFreqKey = colorsByFrequency[j];
-              
-              // 如果低频颜色已被替换，跳过
-              if (replacedColors.has(lowerFreqKey)) continue;
-              
-              const lowerFreqRgb = keyToRgbMap.get(lowerFreqKey);
-              if (!lowerFreqRgb) {
-                  console.warn(`RGB not found for key ${lowerFreqKey}. Skipping.`);
-                  continue;
-              }
-              
-              // 计算颜色距离
-              const dist = colorDistance(currentRgb, lowerFreqRgb);
-              
-              // 如果距离小于阈值，将低频颜色替换为高频颜色
-              if (dist < similarityThresholdValue) {
-                  console.log(`Merging color ${lowerFreqKey} into ${currentKey} (Distance: ${dist.toFixed(2)})`);
-                  
-                  // 标记这个颜色已被替换
-                  replacedColors.add(lowerFreqKey);
-                  
-                  // 替换所有使用这个低频颜色的单元格
-                  for (let r = 0; r < M; r++) {
-                      for (let c = 0; c < N; c++) {
-                          if (mergedData[r][c].key === lowerFreqKey) {
-                              const colorData = keyToColorDataMap.get(currentKey);
-                              if (colorData) {
-                                  mergedData[r][c] = {
-                                      key: currentKey,
-                                      color: colorData.hex,
-                                      isExternal: false
-                                  };
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-      }
-      
-      if (replacedColors.size > 0) {
-          console.log(`Merged ${replacedColors.size} less frequent similar colors into more frequent ones.`);
-      } else {
-          console.log("No colors were similar enough to merge.");
-      }
-      // --- 结束新的全局颜色合并逻辑 ---
-
-      // --- 绘制和状态更新 ---
+      const mergedData = mergeSimilarMappedColors(initialMappedData, currentPalette, threshold);
+      console.log(`Merged color data generated with perceptual threshold ${threshold}.`);
       if (pixelatedCanvasRef.current) {
         setMappedPixelData(mergedData);
         setGridDimensions({ N, M });
 
-        const counts: { [key: string]: { count: number; color: string } } = {};
-        let totalCount = 0;
-        mergedData.flat().forEach(cell => {
-          if (cell && cell.key && !cell.isExternal) {
-            // 使用hex值作为统计键值，而不是色号
-            const hexKey = cell.color;
-            if (!counts[hexKey]) {
-              counts[hexKey] = { count: 0, color: cell.color };
-            }
-            counts[hexKey].count++;
-            totalCount++;
-          }
-        });
+        const { colorCounts: counts, totalCount } = countMappedColors(mergedData);
         setColorCounts(counts);
         setTotalBeadCount(totalCount);
         setInitialGridColorKeys(new Set(Object.keys(counts)));
@@ -1015,6 +913,18 @@ export default function Home() {
     const handleDownloadRequest = (options?: GridDownloadOptions) => {
         // 调用移动到utils/imageDownloader.ts中的downloadImage函数
         downloadImage({
+          mappedPixelData,
+          gridDimensions,
+          colorCounts,
+          totalBeadCount,
+          options: options || downloadOptions,
+          activeBeadPalette,
+          selectedColorSystem
+        });
+    };
+
+    const handleSplitDownloadRequest = (options?: GridDownloadOptions) => {
+        downloadSplitImages({
           mappedPixelData,
           gridDimensions,
           colorCounts,
@@ -2026,6 +1936,17 @@ export default function Home() {
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">支持 JPG, PNG 图片格式，或 CSV 数据文件</p>
         </div>
 
+        {/* 批量处理按钮 */}
+        <button
+          onClick={() => setIsBatchUploadOpen(true)}
+          className="w-full md:max-w-md text-xs sm:text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-center gap-1.5 py-1"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          需要批量处理多张图片？点这里
+        </button>
+
         {/* Apply dark mode styles to the Tip Box */}
         {!originalImageSrc && (
           <div className="w-full md:max-w-md bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700 p-3 rounded-lg border border-blue-100 dark:border-gray-600 shadow-sm">
@@ -2053,7 +1974,7 @@ export default function Home() {
                 <div className="flex-1">
                   {/* Label color */}
                   <label htmlFor="granularityInput" className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">
-                    横轴切割数量 (10-300):
+                    横轴切割数量 (10-1000):
                   </label>
                   <div className="flex items-center gap-2">
                     {/* Input field styles */}
@@ -2063,8 +1984,8 @@ export default function Home() {
                       value={granularityInput}
                       onChange={handleGranularityInputChange}
                       className="w-full p-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 h-9 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
-                      min="10"
-                      max="300"
+                      min={MIN_GRID_GRANULARITY}
+                      max={MAX_GRID_GRANULARITY}
                     />
                   </div>
                 </div>
@@ -2549,10 +2470,11 @@ export default function Home() {
       <DownloadSettingsModal 
         isOpen={isDownloadSettingsOpen}
         onClose={() => setIsDownloadSettingsOpen(false)}
-        options={downloadOptions}
-        onOptionsChange={setDownloadOptions}
-        onDownload={handleDownloadRequest}
-      />
+	        options={downloadOptions}
+	        onOptionsChange={setDownloadOptions}
+	        onDownload={handleDownloadRequest}
+	        onDownloadSplit={handleSplitDownloadRequest}
+	      />
 
       {/* 专心拼豆模式进入前下载提醒弹窗 */}
       <FocusModePreDownloadModal
@@ -2562,6 +2484,18 @@ export default function Home() {
         mappedPixelData={mappedPixelData}
         gridDimensions={gridDimensions}
         selectedColorSystem={selectedColorSystem}
+      />
+
+      {/* 批量处理弹窗 */}
+      <BatchUploadModal
+        isOpen={isBatchUploadOpen}
+        onClose={() => setIsBatchUploadOpen(false)}
+        activeBeadPalette={activeBeadPalette}
+        downloadOptions={downloadOptions}
+        selectedColorSystem={selectedColorSystem}
+        defaultGranularity={granularity}
+        defaultSimilarityThreshold={similarityThreshold}
+        defaultPixelationMode={pixelationMode}
       />
     </div>
    </>

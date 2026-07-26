@@ -6,5 +6,6 @@ export type GridDownloadOptions = {
   showCellNumbers: boolean;
   gridLineColor: string;
   includeStats: boolean;
-  exportCsv: boolean; // 新增：是否同时导出CSV hex数据
+  exportCsv: boolean; // 是否同时导出CSV hex数据
+  trimTransparent: boolean; // 裁剪掉四周的透明/外部区域
 };

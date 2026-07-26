@@ -17,6 +17,7 @@ interface DownloadSettingsModalProps {
   options: GridDownloadOptions;
   onOptionsChange: (options: GridDownloadOptions) => void;
   onDownload: (opts?: GridDownloadOptions) => void;
+  onDownloadSplit?: (opts?: GridDownloadOptions) => void;
 }
 
 const DownloadSettingsModal: React.FC<DownloadSettingsModalProps> = ({
@@ -24,7 +25,8 @@ const DownloadSettingsModal: React.FC<DownloadSettingsModalProps> = ({
   onClose,
   options,
   onOptionsChange,
-  onDownload
+  onDownload,
+  onDownloadSplit
 }) => {
   // 将useState移到顶层，不管isOpen是什么值
   const [tempOptions, setTempOptions] = useState<GridDownloadOptions>({...options});
@@ -48,6 +50,12 @@ const DownloadSettingsModal: React.FC<DownloadSettingsModalProps> = ({
     // 直接使用当前临时设置下载，不依赖状态更新
     onDownload(tempOptions); 
     
+    onClose();
+  };
+
+  const handleSplitDownload = () => {
+    onOptionsChange(tempOptions);
+    onDownloadSplit?.(tempOptions);
     onClose();
   };
   
@@ -184,7 +192,28 @@ const DownloadSettingsModal: React.FC<DownloadSettingsModalProps> = ({
               </label>
             </div>
 
-            {/* 新增: 导出CSV hex数据选项 */}
+            {/* 裁剪透明区域选项 */}
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
+                  裁剪空白边缘
+                </label>
+                <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  去除四周没有豆子的透明区域
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="sr-only peer"
+                  checked={tempOptions.trimTransparent}
+                  onChange={(e) => handleOptionChange('trimTransparent', e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            {/* 导出CSV hex数据选项 */}
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
                 <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -206,13 +235,21 @@ const DownloadSettingsModal: React.FC<DownloadSettingsModalProps> = ({
             </div>
           </div>
           
-          <div className="flex justify-end mt-6 space-x-3">
+          <div className="flex flex-col sm:flex-row justify-end mt-6 gap-3">
             <button
               onClick={onClose}
               className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg transition-colors"
             >
               取消
             </button>
+            {onDownloadSplit && (
+              <button
+                onClick={handleSplitDownload}
+                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg transition-colors"
+              >
+                下载四分图（小红书）
+              </button>
+            )}
             <button
               onClick={handleSave}
               className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
