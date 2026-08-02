@@ -286,7 +286,6 @@ function drawDownloadCanvas({
       gridHeight,
       axisLabelSize,
       downloadCellSize,
-      range,
       renderCols,
       renderRows,
       gridInterval,
@@ -312,7 +311,6 @@ function drawDownloadCanvas({
     gridOriginY,
     gridWidth,
     gridHeight,
-    range,
     downloadCellSize,
     renderCols,
     renderRows,
@@ -387,7 +385,6 @@ function drawCoordinateBands(
     gridHeight: number;
     axisLabelSize: number;
     downloadCellSize: number;
-    range: RenderRange;
     renderCols: number;
     renderRows: number;
     gridInterval: number;
@@ -401,7 +398,6 @@ function drawCoordinateBands(
     gridHeight,
     axisLabelSize,
     downloadCellSize,
-    range,
     renderCols,
     renderRows,
     gridInterval,
@@ -420,20 +416,18 @@ function drawCoordinateBands(
   ctx.textBaseline = 'middle';
 
   for (let i = 0; i < renderCols; i++) {
-    const origCol = range.minCol + i;
-    if ((origCol + 1) % gridInterval === 0 || i === 0 || i === renderCols - 1) {
+    if (i % gridInterval === 0 || i === renderCols - 1) {
       const x = gridOriginX + i * downloadCellSize + downloadCellSize / 2;
-      ctx.fillText((origCol + 1).toString(), x, gridOriginY - axisLabelSize / 2);
-      ctx.fillText((origCol + 1).toString(), x, gridOriginY + gridHeight + axisLabelSize / 2);
+      ctx.fillText(i.toString(), x, gridOriginY - axisLabelSize / 2);
+      ctx.fillText(i.toString(), x, gridOriginY + gridHeight + axisLabelSize / 2);
     }
   }
 
   for (let j = 0; j < renderRows; j++) {
-    const origRow = range.minRow + j;
-    if ((origRow + 1) % gridInterval === 0 || j === 0 || j === renderRows - 1) {
+    if (j % gridInterval === 0 || j === renderRows - 1) {
       const y = gridOriginY + j * downloadCellSize + downloadCellSize / 2;
-      ctx.fillText((origRow + 1).toString(), gridOriginX - axisLabelSize / 2, y);
-      ctx.fillText((origRow + 1).toString(), gridOriginX + gridWidth + axisLabelSize / 2, y);
+      ctx.fillText(j.toString(), gridOriginX - axisLabelSize / 2, y);
+      ctx.fillText(j.toString(), gridOriginX + gridWidth + axisLabelSize / 2, y);
     }
   }
 
@@ -511,7 +505,6 @@ function drawGrid(
     gridOriginY: number;
     gridWidth: number;
     gridHeight: number;
-    range: RenderRange;
     downloadCellSize: number;
     renderCols: number;
     renderRows: number;
@@ -525,7 +518,6 @@ function drawGrid(
     gridOriginY,
     gridWidth,
     gridHeight,
-    range,
     downloadCellSize,
     renderCols,
     renderRows,
@@ -535,33 +527,105 @@ function drawGrid(
   } = args;
 
   if (showGrid) {
-    ctx.strokeStyle = gridLineColor;
-    ctx.lineWidth = 1.5;
+    const dividerLineWidth = Math.max(3, Math.min(6, downloadCellSize * 0.18));
+    const dashLength = Math.max(8, downloadCellSize * 0.65);
+    const dashGap = Math.max(6, downloadCellSize * 0.45);
 
-    for (let origCol = range.minCol + 1; origCol <= range.maxCol; origCol++) {
-      if (origCol % gridInterval === 0) {
-        const x = gridOriginX + (origCol - range.minCol) * downloadCellSize;
-        ctx.beginPath();
-        ctx.moveTo(x, gridOriginY);
-        ctx.lineTo(x, gridOriginY + renderRows * downloadCellSize);
-        ctx.stroke();
+    for (let col = 1; col < renderCols; col++) {
+      if (col % gridInterval === 0) {
+        const x = gridOriginX + col * downloadCellSize;
+        drawHighContrastDashedLine(ctx, {
+          startX: x,
+          startY: gridOriginY,
+          endX: x,
+          endY: gridOriginY + renderRows * downloadCellSize,
+          color: gridLineColor,
+          lineWidth: dividerLineWidth,
+          dashLength,
+          dashGap,
+        });
       }
     }
 
-    for (let origRow = range.minRow + 1; origRow <= range.maxRow; origRow++) {
-      if (origRow % gridInterval === 0) {
-        const y = gridOriginY + (origRow - range.minRow) * downloadCellSize;
-        ctx.beginPath();
-        ctx.moveTo(gridOriginX, y);
-        ctx.lineTo(gridOriginX + renderCols * downloadCellSize, y);
-        ctx.stroke();
+    for (let row = 1; row < renderRows; row++) {
+      if (row % gridInterval === 0) {
+        const y = gridOriginY + row * downloadCellSize;
+        drawHighContrastDashedLine(ctx, {
+          startX: gridOriginX,
+          startY: y,
+          endX: gridOriginX + renderCols * downloadCellSize,
+          endY: y,
+          color: gridLineColor,
+          lineWidth: dividerLineWidth,
+          dashLength,
+          dashGap,
+        });
       }
     }
   }
 
+  // 外轮廓保持实线，并比普通单元格边框更粗，便于识别图纸范围。
+  ctx.setLineDash([]);
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = Math.max(2.5, Math.min(5, downloadCellSize * 0.14));
   ctx.strokeRect(gridOriginX + 0.5, gridOriginY + 0.5, gridWidth, gridHeight);
+}
+
+function drawHighContrastDashedLine(
+  ctx: CanvasRenderingContext2D,
+  args: {
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    color: string;
+    lineWidth: number;
+    dashLength: number;
+    dashGap: number;
+  }
+) {
+  const {
+    startX,
+    startY,
+    endX,
+    endY,
+    color,
+    lineWidth,
+    dashLength,
+    dashGap,
+  } = args;
+  const isVertical = startX === endX;
+  const totalLength = isVertical ? Math.abs(endY - startY) : Math.abs(endX - startX);
+  const directionX = endX >= startX ? 1 : -1;
+  const directionY = endY >= startY ? 1 : -1;
+
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.lineCap = 'butt';
+
+  for (let offset = 0; offset < totalLength; offset += dashLength + dashGap) {
+    const segmentEnd = Math.min(offset + dashLength, totalLength);
+    const segmentStartX = isVertical ? startX : startX + offset * directionX;
+    const segmentStartY = isVertical ? startY + offset * directionY : startY;
+    const segmentEndX = isVertical ? endX : startX + segmentEnd * directionX;
+    const segmentEndY = isVertical ? startY + segmentEnd * directionY : endY;
+
+    ctx.beginPath();
+    ctx.moveTo(segmentStartX, segmentStartY);
+    ctx.lineTo(segmentEndX, segmentEndY);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.lineWidth = lineWidth + 3;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(segmentStartX, segmentStartY);
+    ctx.lineTo(segmentEndX, segmentEndY);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function drawWatermark(
