@@ -333,6 +333,8 @@ function drawDownloadCanvas({
     gridLineColor,
   });
 
+  drawWatermark(ctx, gridOriginX, gridOriginY, downloadCellSize);
+
   if (includeStats) {
     drawStats(ctx, {
       y: gridOriginY + gridHeight + axisLabelSize + statsTopMargin,
@@ -563,6 +565,31 @@ function drawGrid(
   ctx.strokeStyle = '#000000';
   ctx.lineWidth = 1.5;
   ctx.strokeRect(gridOriginX + 0.5, gridOriginY + 0.5, gridWidth, gridHeight);
+}
+
+function drawWatermark(
+  ctx: CanvasRenderingContext2D,
+  gridOriginX: number,
+  gridOriginY: number,
+  downloadCellSize: number
+) {
+  const fontSize = Math.max(10, Math.floor(downloadCellSize * 0.45));
+  const text = '@Lazarus';
+  ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`;
+  const metrics = ctx.measureText(text);
+  const padding = 4;
+  const x = gridOriginX + 14;
+  const y = gridOriginY + fontSize + 14;
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.beginPath();
+  ctx.roundRect(x - padding, y - fontSize - padding, metrics.width + padding * 2, fontSize + padding * 2, 3);
+  ctx.fill();
+
+  ctx.fillStyle = '#6B7280';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(text, x, y);
 }
 
 function drawStats(
