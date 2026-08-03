@@ -574,7 +574,7 @@ function drawWatermark(
   downloadCellSize: number
 ) {
   const fontSize = Math.max(10, Math.floor(downloadCellSize * 0.45));
-  const text = '@Lazarus';
+  const text = '@T^T';
   ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`;
   const metrics = ctx.measureText(text);
   const padding = 4;
