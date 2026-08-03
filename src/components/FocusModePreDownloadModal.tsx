@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { MappedPixel } from '../utils/pixelation';
-import { ColorSystem } from '../utils/colorSystemUtils';
 import { exportCsvData } from '../utils/imageDownloader';
 
 interface FocusModePreDownloadModalProps {
@@ -11,7 +10,7 @@ interface FocusModePreDownloadModalProps {
   onProceedWithoutDownload: () => void;
   mappedPixelData: MappedPixel[][] | null;
   gridDimensions: { N: number; M: number } | null;
-  selectedColorSystem: ColorSystem;
+  sourceFileName: string | null;
 }
 
 const FocusModePreDownloadModal: React.FC<FocusModePreDownloadModalProps> = ({
@@ -20,7 +19,7 @@ const FocusModePreDownloadModal: React.FC<FocusModePreDownloadModalProps> = ({
   onProceedWithoutDownload,
   mappedPixelData,
   gridDimensions,
-  selectedColorSystem
+  sourceFileName
 }) => {
   if (!isOpen) return null;
 
@@ -29,7 +28,7 @@ const FocusModePreDownloadModal: React.FC<FocusModePreDownloadModalProps> = ({
     exportCsvData({
       mappedPixelData,
       gridDimensions,
-      selectedColorSystem
+      sourceFileName
     });
     
     // 稍等一下让下载开始，然后进入专心拼豆模式
@@ -112,4 +111,4 @@ const FocusModePreDownloadModal: React.FC<FocusModePreDownloadModalProps> = ({
   );
 };
 
-export default FocusModePreDownloadModal; 
+export default FocusModePreDownloadModal;

@@ -145,6 +145,7 @@ export async function batchProcessAndDownload(
         options: downloadOptions,
         activeBeadPalette: palette,
         selectedColorSystem,
+        sourceFileName: result.fileName,
       });
 
       onProgress(item.id, 'done');

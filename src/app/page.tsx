@@ -103,6 +103,7 @@ import FocusModePreDownloadModal from '../components/FocusModePreDownloadModal';
 
 export default function Home() {
   const [originalImageSrc, setOriginalImageSrc] = useState<string | null>(null);
+  const [sourceFileName, setSourceFileName] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<number>(50);
   const [granularityInput, setGranularityInput] = useState<string>("50");
   const [similarityThreshold, setSimilarityThreshold] = useState<number>(0);
@@ -547,6 +548,8 @@ export default function Home() {
   };
 
   const processFile = (file: File) => {
+    setSourceFileName(file.name);
+
     // 检查文件类型
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     
@@ -919,7 +922,8 @@ export default function Home() {
           totalBeadCount,
           options: options || downloadOptions,
           activeBeadPalette,
-          selectedColorSystem
+          selectedColorSystem,
+          sourceFileName
         });
     };
 
@@ -931,7 +935,8 @@ export default function Home() {
           totalBeadCount,
           options: options || downloadOptions,
           activeBeadPalette,
-          selectedColorSystem
+          selectedColorSystem,
+          sourceFileName
         });
     };
 
@@ -2483,7 +2488,7 @@ export default function Home() {
         onProceedWithoutDownload={handleProceedToFocusMode}
         mappedPixelData={mappedPixelData}
         gridDimensions={gridDimensions}
-        selectedColorSystem={selectedColorSystem}
+        sourceFileName={sourceFileName}
       />
 
       {/* 批量处理弹窗 */}

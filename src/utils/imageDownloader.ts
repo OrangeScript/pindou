@@ -22,14 +22,31 @@ type RenderRequest = {
   options: GridDownloadOptions;
   selectedColorSystem: ColorSystem;
   preferredCellSize: number;
-  filePrefix: string;
-  tileLabel?: string;
+  fileName: string;
 };
 
 const MAX_CANVAS_SIDE = 16000;
 const MAX_CANVAS_PIXELS = 180_000_000;
 const FULL_IMAGE_CELL_SIZE = 30;
 const SPLIT_IMAGE_CELL_SIZE = 36;
+const PATTERN_FILE_SUFFIX = '-拼豆图纸';
+
+export function buildPatternFileName(
+  sourceFileName: string | null | undefined,
+  extension: 'png' | 'csv',
+  partIndex?: number
+): string {
+  const normalizedName = sourceFileName?.trim().replace(/\\/g, '/').split('/').pop();
+  const lastDotIndex = normalizedName?.lastIndexOf('.') ?? -1;
+  const sourceName = normalizedName
+    ? lastDotIndex > 0
+      ? normalizedName.slice(0, lastDotIndex)
+      : normalizedName
+    : '未命名';
+  const partSuffix = partIndex === undefined ? '' : `-分图${partIndex}`;
+
+  return `${sourceName}${PATTERN_FILE_SUFFIX}${partSuffix}.${extension}`;
+}
 
 function getContrastColor(hex: string): string {
   const rgb = hexToRgb(hex);
@@ -235,8 +252,7 @@ function drawDownloadCanvas({
   options,
   selectedColorSystem,
   preferredCellSize,
-  filePrefix,
-  tileLabel,
+  fileName,
 }: RenderRequest): { canvas: HTMLCanvasElement; fileName: string } {
   const { showGrid, gridInterval, showCoordinates, gridLineColor, includeStats, showCellNumbers = true } = options;
   const renderCols = range.maxCol - range.minCol + 1;
@@ -245,7 +261,6 @@ function drawDownloadCanvas({
   const axisLabelSize = showCoordinates ? Math.max(32, Math.floor(downloadCellSize * 1.15)) : 0;
   const fontSize = Math.max(7, Math.floor(downloadCellSize * 0.38));
   const statsTopMargin = includeStats ? 16 : 0;
-  const xiaohongshuAreaHeight = 34;
   const gridWidth = renderCols * downloadCellSize;
   const gridHeight = renderRows * downloadCellSize;
   const extraLeftMargin = showCoordinates ? Math.max(14, fontSize * 2) : 0;
@@ -260,8 +275,7 @@ function drawDownloadCanvas({
     axisLabelSize * 2 +
     extraTopMargin +
     extraBottomMargin +
-    statsInfo.height +
-    xiaohongshuAreaHeight;
+    statsInfo.height;
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -319,8 +333,6 @@ function drawDownloadCanvas({
     gridLineColor,
   });
 
-  drawWatermark(ctx, gridOriginX, gridOriginY, downloadCellSize);
-
   if (includeStats) {
     drawStats(ctx, {
       y: gridOriginY + gridHeight + axisLabelSize + statsTopMargin,
@@ -332,9 +344,6 @@ function drawDownloadCanvas({
     });
   }
 
-  const suffix = tileLabel ? `-${tileLabel}` : '';
-  const mode = showCellNumbers ? 'keys' : 'pixel';
-  const fileName = `${filePrefix}-${renderCols}x${renderRows}${suffix}-${mode}-palette_${selectedColorSystem}.png`;
   return { canvas, fileName };
 }
 
@@ -365,7 +374,7 @@ function calculateStatsLayout(width: number, colorCounts: ColorCounts, includeSt
   const titleHeight = 38;
 
   return {
-    height: titleHeight + rows * rowHeight + 34 + padding,
+    height: titleHeight + rows * rowHeight + padding,
     fontSize,
     swatchSize,
     rowHeight,
@@ -556,31 +565,6 @@ function drawGrid(
   ctx.strokeRect(gridOriginX + 0.5, gridOriginY + 0.5, gridWidth, gridHeight);
 }
 
-function drawWatermark(
-  ctx: CanvasRenderingContext2D,
-  gridOriginX: number,
-  gridOriginY: number,
-  downloadCellSize: number
-) {
-  const fontSize = Math.max(10, Math.floor(downloadCellSize * 0.45));
-  const text = '@Isaac';
-  ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`;
-  const metrics = ctx.measureText(text);
-  const padding = 4;
-  const x = gridOriginX + 14;
-  const y = gridOriginY + fontSize + 14;
-
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-  ctx.beginPath();
-  ctx.roundRect(x - padding, y - fontSize - padding, metrics.width + padding * 2, fontSize + padding * 2, 3);
-  ctx.fill();
-
-  ctx.fillStyle = '#6B7280';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(text, x, y);
-}
-
 function drawStats(
   ctx: CanvasRenderingContext2D,
   args: {
@@ -638,25 +622,16 @@ function drawStats(
     ctx.fillText(`x${cellData.count}`, itemX + layout.swatchSize + 13 + codeWidth, rowY);
   });
 
-  const watermarkY =
-    y +
-    layout.titleHeight +
-    Math.ceil(colorKeys.length / layout.columns) * layout.rowHeight +
-    16;
-  ctx.fillStyle = '#AAAAAA';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('Designed by @Isaac', width - layout.padding, watermarkY);
 }
 
 export function exportCsvData({
   mappedPixelData,
   gridDimensions,
-  selectedColorSystem,
+  sourceFileName,
 }: {
   mappedPixelData: MappedPixel[][] | null;
   gridDimensions: { N: number; M: number } | null;
-  selectedColorSystem: ColorSystem;
+  sourceFileName: string | null;
 }): void {
   if (!mappedPixelData || !gridDimensions) {
     console.error('导出失败: 映射数据或尺寸无效。');
@@ -682,7 +657,7 @@ export function exportCsvData({
   const url = URL.createObjectURL(blob);
 
   link.setAttribute('href', url);
-  link.setAttribute('download', `bead-pattern-${N}x${M}-${selectedColorSystem}.csv`);
+  link.setAttribute('download', buildPatternFileName(sourceFileName, 'csv'));
   link.style.visibility = 'hidden';
 
   document.body.appendChild(link);
@@ -800,6 +775,7 @@ export async function downloadImage({
   options,
   activeBeadPalette,
   selectedColorSystem,
+  sourceFileName,
 }: {
   mappedPixelData: MappedPixel[][] | null;
   gridDimensions: { N: number; M: number } | null;
@@ -808,6 +784,7 @@ export async function downloadImage({
   options: GridDownloadOptions;
   activeBeadPalette: PaletteColor[];
   selectedColorSystem: ColorSystem;
+  sourceFileName: string | null;
 }): Promise<void> {
   if (!validateDownloadInput({ mappedPixelData, gridDimensions, activeBeadPalette })) return;
   if (!mappedPixelData || !gridDimensions) return;
@@ -819,7 +796,7 @@ export async function downloadImage({
     options,
     selectedColorSystem,
     preferredCellSize: FULL_IMAGE_CELL_SIZE,
-    filePrefix: 'bead-grid',
+    fileName: buildPatternFileName(sourceFileName, 'png'),
   });
 
   try {
@@ -829,7 +806,7 @@ export async function downloadImage({
       exportCsvData({
         mappedPixelData,
         gridDimensions,
-        selectedColorSystem,
+        sourceFileName,
       });
     }
   } catch (e) {
@@ -844,6 +821,7 @@ export async function downloadSplitImages({
   options,
   activeBeadPalette,
   selectedColorSystem,
+  sourceFileName,
 }: {
   mappedPixelData: MappedPixel[][] | null;
   gridDimensions: { N: number; M: number } | null;
@@ -852,6 +830,7 @@ export async function downloadSplitImages({
   options: GridDownloadOptions;
   activeBeadPalette: PaletteColor[];
   selectedColorSystem: ColorSystem;
+  sourceFileName: string | null;
 }): Promise<void> {
   if (!validateDownloadInput({ mappedPixelData, gridDimensions, activeBeadPalette })) return;
   if (!mappedPixelData || !gridDimensions) return;
@@ -867,8 +846,7 @@ export async function downloadSplitImages({
         options,
         selectedColorSystem,
         preferredCellSize: SPLIT_IMAGE_CELL_SIZE,
-        filePrefix: `bead-grid-xhs-part-${range.index}`,
-        tileLabel: range.label,
+        fileName: buildPatternFileName(sourceFileName, 'png', range.index),
       });
 
       await triggerCanvasDownload(canvas, fileName);
