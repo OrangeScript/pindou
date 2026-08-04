@@ -132,7 +132,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
       {isOpen && (
         <section
           aria-label="像素净化工具"
-          className="fixed bottom-20 left-4 z-[90] flex max-h-[calc(100vh-6rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-indigo-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-indigo-800/70 dark:bg-gray-900/95 sm:left-6 sm:w-[440px]"
+          className="fixed left-4 top-20 z-[90] flex max-h-[calc(100vh-6rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-indigo-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-indigo-800/70 dark:bg-gray-900/95 sm:left-6 sm:w-[440px]"
         >
           <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
             <div>
@@ -325,7 +325,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
         onClick={() => setIsOpen(current => !current)}
         aria-expanded={isOpen}
         aria-label={isOpen ? '收起像素净化工具' : '打开像素净化工具'}
-        className="fixed bottom-5 left-4 z-[90] flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 sm:left-6"
+        className="fixed left-4 top-5 z-[90] flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 sm:left-6"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <rect x="4" y="4" width="6" height="6" rx="1" />
