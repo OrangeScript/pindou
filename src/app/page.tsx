@@ -100,6 +100,7 @@ import { TRANSPARENT_KEY, transparentColorData } from '../utils/pixelEditingUtil
 // 1. 导入新的 DonationModal 组件
 import DonationModal from '../components/DonationModal';
 import FocusModePreDownloadModal from '../components/FocusModePreDownloadModal';
+import LocalPixelRefinerWidget from '../components/LocalPixelRefinerWidget';
 
 export default function Home() {
   const [originalImageSrc, setOriginalImageSrc] = useState<string | null>(null);
@@ -2471,6 +2472,9 @@ export default function Home() {
       {/* Donation Modal - 现在使用新的组件 */}
       <DonationModal isOpen={isDonationModalOpen} onClose={() => setIsDonationModalOpen(false)} />
 
+      {/* 本地像素净化悬浮窗 */}
+      <LocalPixelRefinerWidget />
+
       {/* 使用导入的下载设置弹窗组件 */}
       <DownloadSettingsModal 
         isOpen={isDownloadSettingsOpen}
@@ -2502,6 +2506,7 @@ export default function Home() {
         defaultSimilarityThreshold={similarityThreshold}
         defaultPixelationMode={pixelationMode}
       />
+
     </div>
    </>
   );
