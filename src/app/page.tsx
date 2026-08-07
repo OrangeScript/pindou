@@ -92,10 +92,22 @@ import GridTooltip from '../components/GridTooltip';
 import CustomPaletteEditor from '../components/CustomPaletteEditor';
 import FloatingColorPalette from '../components/FloatingColorPalette';
 import FloatingToolbar from '../components/FloatingToolbar';
-import MagnifierTool from '../components/MagnifierTool';
-import MagnifierSelectionOverlay from '../components/MagnifierSelectionOverlay';
 import { loadPaletteSelections, savePaletteSelections, presetToSelections, PaletteSelections } from '../utils/localStorageUtils';
-import { TRANSPARENT_KEY, transparentColorData } from '../utils/pixelEditingUtils';
+import {
+  TRANSPARENT_KEY,
+  transparentColorData,
+  floodFillRegion,
+  interpolateGridLine,
+  paintBrushStroke,
+  recalculateColorStats,
+  replaceMatchingPixels,
+} from '../utils/pixelEditingUtils';
+import {
+  BrushShape,
+  EditorPointerPhase,
+  GridCellPosition,
+  ManualEditorTool,
+} from '../types/manualEditor';
 
 // 1. 导入新的 DonationModal 组件
 import DonationModal from '../components/DonationModal';
@@ -177,90 +189,23 @@ export default function Home() {
   // 新增：悬浮调色盘状态
   const [isFloatingPaletteOpen, setIsFloatingPaletteOpen] = useState<boolean>(true);
 
-  // 新增：放大镜状态
-  const [isMagnifierActive, setIsMagnifierActive] = useState<boolean>(false);
-  const [magnifierSelectionArea, setMagnifierSelectionArea] = useState<{
-    startRow: number;
-    startCol: number;
-    endRow: number;
-    endCol: number;
-  } | null>(null);
-
-  // 新增：活跃工具层级管理
-  const [activeFloatingTool, setActiveFloatingTool] = useState<'palette' | 'magnifier' | null>(null);
+  // 手动绘图编辑器状态
+  const [manualEditorTool, setManualEditorTool] = useState<ManualEditorTool>('brush');
+  const [manualBrushSize, setManualBrushSize] = useState<number>(1);
+  const [manualBrushShape, setManualBrushShape] = useState<BrushShape>('circle');
+  const [manualEditorZoom, setManualEditorZoom] = useState<number>(1);
+  const [showManualGrid, setShowManualGrid] = useState<boolean>(true);
+  const [manualEditorStatus, setManualEditorStatus] = useState<string>('请选择颜色，然后在图纸上绘制');
+  const [, setHistoryVersion] = useState<number>(0);
+  const mappedPixelDataRef = useRef<MappedPixel[][] | null>(null);
+  const undoHistoryRef = useRef<MappedPixel[][][]>([]);
+  const redoHistoryRef = useRef<MappedPixel[][][]>([]);
+  const strokeStartSnapshotRef = useRef<MappedPixel[][] | null>(null);
+  const lastStrokeCellRef = useRef<GridCellPosition | null>(null);
+  const strokeChangedRef = useRef<boolean>(false);
 
   // 新增：专心拼豆模式进入前下载提醒弹窗
   const [isFocusModePreDownloadModalOpen, setIsFocusModePreDownloadModalOpen] = useState<boolean>(false);
-
-  // 放大镜切换处理函数
-  const handleToggleMagnifier = () => {
-    const newActiveState = !isMagnifierActive;
-    setIsMagnifierActive(newActiveState);
-    
-    // 如果关闭放大镜，清除选择区域，重新开始
-    if (!newActiveState) {
-      setMagnifierSelectionArea(null);
-    }
-  };
-
-  // 激活工具处理函数
-  const handleActivatePalette = () => {
-    setActiveFloatingTool('palette');
-  };
-
-  const handleActivateMagnifier = () => {
-    setActiveFloatingTool('magnifier');
-  };
-
-  // 放大镜像素编辑处理函数
-  const handleMagnifierPixelEdit = (row: number, col: number, colorData: { key: string; color: string }) => {
-    if (!mappedPixelData) return;
-    
-    // 创建新的像素数据
-    const newMappedPixelData = mappedPixelData.map((rowData, r) =>
-      rowData.map((pixel, c) => {
-        if (r === row && c === col) {
-          return { 
-            key: colorData.key, 
-            color: colorData.color 
-          } as MappedPixel;
-        }
-        return pixel;
-      })
-    );
-    
-    setMappedPixelData(newMappedPixelData);
-    
-    // 更新颜色统计
-    if (colorCounts) {
-      const newColorCounts = { ...colorCounts };
-      
-      // 减少原颜色的计数
-      const oldPixel = mappedPixelData[row][col];
-      if (newColorCounts[oldPixel.key]) {
-        newColorCounts[oldPixel.key].count--;
-        if (newColorCounts[oldPixel.key].count === 0) {
-          delete newColorCounts[oldPixel.key];
-        }
-      }
-      
-      // 增加新颜色的计数
-      if (newColorCounts[colorData.key]) {
-        newColorCounts[colorData.key].count++;
-      } else {
-        newColorCounts[colorData.key] = {
-          count: 1,
-          color: colorData.color
-        };
-      }
-      
-      setColorCounts(newColorCounts);
-      
-      // 更新总计数
-      const newTotal = Object.values(newColorCounts).reduce((sum, item) => sum + item.count, 0);
-      setTotalBeadCount(newTotal);
-    }
-  };
 
   const originalCanvasRef = useRef<HTMLCanvasElement>(null);
   const pixelatedCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -274,6 +219,10 @@ export default function Home() {
 
   // ++ Add a ref for the main element ++
   const mainRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    mappedPixelDataRef.current = mappedPixelData;
+  }, [mappedPixelData]);
 
   // --- Derived State ---
 
@@ -638,29 +587,6 @@ export default function Home() {
       setIsManualColoringMode(false);
       setSelectedColor(null);
       setIsEraseMode(false);
-    }
-  };
-
-  // 处理一键擦除模式切换
-  const handleEraseToggle = () => {
-    // 确保在手动上色模式下才能使用擦除功能
-    if (!isManualColoringMode) {
-      return;
-    }
-    
-    // 如果当前在颜色替换模式，先退出替换模式
-    if (colorReplaceState.isActive) {
-      setColorReplaceState({
-        isActive: false,
-        step: 'select-source'
-      });
-      setHighlightColorKey(null);
-    }
-    
-    setIsEraseMode(!isEraseMode);
-    // 如果开启擦除模式，取消选中的颜色
-    if (!isEraseMode) {
-      setSelectedColor(null);
     }
   };
 
@@ -1432,6 +1358,275 @@ export default function Home() {
     }
   };
 
+  const refreshManualEditorStats = useCallback((pixelData: MappedPixel[][]) => {
+    const { colorCounts: nextCounts, totalCount } = recalculateColorStats(pixelData);
+    setColorCounts(nextCounts);
+    setTotalBeadCount(totalCount);
+  }, []);
+
+  const applyManualEditorData = useCallback((pixelData: MappedPixel[][], refreshStats: boolean) => {
+    mappedPixelDataRef.current = pixelData;
+    setMappedPixelData(pixelData);
+    if (refreshStats) refreshManualEditorStats(pixelData);
+  }, [refreshManualEditorStats]);
+
+  const pushManualHistory = useCallback((snapshot: MappedPixel[][]) => {
+    undoHistoryRef.current = [...undoHistoryRef.current.slice(-49), snapshot];
+    redoHistoryRef.current = [];
+    setHistoryVersion(version => version + 1);
+  }, []);
+
+  const resetManualHistory = useCallback(() => {
+    undoHistoryRef.current = [];
+    redoHistoryRef.current = [];
+    strokeStartSnapshotRef.current = null;
+    lastStrokeCellRef.current = null;
+    strokeChangedRef.current = false;
+    setHistoryVersion(version => version + 1);
+  }, []);
+
+  const handleManualUndo = useCallback(() => {
+    const currentData = mappedPixelDataRef.current;
+    const previousData = undoHistoryRef.current.at(-1);
+    if (!currentData || !previousData) return;
+
+    undoHistoryRef.current = undoHistoryRef.current.slice(0, -1);
+    redoHistoryRef.current = [...redoHistoryRef.current.slice(-49), currentData];
+    applyManualEditorData(previousData, true);
+    setManualEditorStatus('已撤销上一步操作');
+    setHistoryVersion(version => version + 1);
+  }, [applyManualEditorData]);
+
+  const handleManualRedo = useCallback(() => {
+    const currentData = mappedPixelDataRef.current;
+    const nextData = redoHistoryRef.current.at(-1);
+    if (!currentData || !nextData) return;
+
+    redoHistoryRef.current = redoHistoryRef.current.slice(0, -1);
+    undoHistoryRef.current = [...undoHistoryRef.current.slice(-49), currentData];
+    applyManualEditorData(nextData, true);
+    setManualEditorStatus('已重做上一步操作');
+    setHistoryVersion(version => version + 1);
+  }, [applyManualEditorData]);
+
+  const handleManualEditorPointer = useCallback((
+    position: GridCellPosition | null,
+    phase: EditorPointerPhase
+  ) => {
+    const currentData = mappedPixelDataRef.current;
+    if (!currentData || !gridDimensions) return;
+
+    if (phase === 'end') {
+      if (strokeStartSnapshotRef.current && strokeChangedRef.current) {
+        pushManualHistory(strokeStartSnapshotRef.current);
+        refreshManualEditorStats(currentData);
+        setManualEditorStatus('笔画已完成，可继续绘制或撤销');
+      }
+      strokeStartSnapshotRef.current = null;
+      lastStrokeCellRef.current = null;
+      strokeChangedRef.current = false;
+      return;
+    }
+
+    if (!position) return;
+
+    if (phase === 'start') {
+      if (manualEditorTool === 'picker') {
+        const pickedCell = currentData[position.row]?.[position.col];
+        if (!pickedCell) return;
+        if (pickedCell.isExternal || pickedCell.key === TRANSPARENT_KEY) {
+          setSelectedColor({ ...transparentColorData });
+          setManualEditorTool('eraser');
+          setManualEditorStatus('已吸取透明区域，切换为橡皮擦');
+        } else {
+          setSelectedColor({ ...pickedCell, isExternal: false });
+          setManualEditorTool('brush');
+          setManualEditorStatus(`已吸取颜色 ${pickedCell.color.toUpperCase()}`);
+          setHighlightColorKey(pickedCell.color);
+        }
+        return;
+      }
+
+      if (manualEditorTool === 'fill' || manualEditorTool === 'replace') {
+        if (!selectedColor || selectedColor.key === TRANSPARENT_KEY || selectedColor.isExternal) {
+          setManualEditorStatus('请先从调色盘选择目标颜色');
+          setIsFloatingPaletteOpen(true);
+          return;
+        }
+
+        const sourceCell = currentData[position.row]?.[position.col];
+        if (!sourceCell) return;
+        const result = manualEditorTool === 'fill'
+          ? floodFillRegion(currentData, gridDimensions, position.row, position.col, selectedColor)
+          : replaceMatchingPixels(currentData, sourceCell, selectedColor);
+
+        if (result.changedCount > 0) {
+          pushManualHistory(currentData);
+          applyManualEditorData(result.newPixelData, true);
+          setManualEditorStatus(
+            manualEditorTool === 'fill'
+              ? `油漆桶已填充 ${result.changedCount} 格连续区域`
+              : `已替换 ${result.changedCount} 个不连续的同色格`
+          );
+        } else {
+          setManualEditorStatus('目标区域已经是当前颜色');
+        }
+        return;
+      }
+
+      if (manualEditorTool !== 'brush' && manualEditorTool !== 'eraser') return;
+      if (manualEditorTool === 'brush' && (!selectedColor || selectedColor.key === TRANSPARENT_KEY)) {
+        setManualEditorStatus('请先从调色盘选择画笔颜色');
+        setIsFloatingPaletteOpen(true);
+        return;
+      }
+
+      strokeStartSnapshotRef.current = currentData;
+      lastStrokeCellRef.current = position;
+      strokeChangedRef.current = false;
+    }
+
+    if (!strokeStartSnapshotRef.current || (manualEditorTool !== 'brush' && manualEditorTool !== 'eraser')) return;
+
+    const previousPosition = lastStrokeCellRef.current ?? position;
+    const strokePoints = interpolateGridLine(previousPosition, position);
+    const paintColor = manualEditorTool === 'eraser' ? transparentColorData : selectedColor;
+    if (!paintColor) return;
+
+    const result = paintBrushStroke(
+      mappedPixelDataRef.current ?? currentData,
+      strokePoints,
+      manualBrushSize,
+      manualBrushShape,
+      paintColor
+    );
+    lastStrokeCellRef.current = position;
+    if (result.changedCount > 0) {
+      strokeChangedRef.current = true;
+      applyManualEditorData(result.newPixelData, false);
+    }
+  }, [
+    applyManualEditorData,
+    gridDimensions,
+    manualBrushShape,
+    manualBrushSize,
+    manualEditorTool,
+    pushManualHistory,
+    refreshManualEditorStats,
+    selectedColor,
+  ]);
+
+  const handleManualToolChange = useCallback((tool: ManualEditorTool) => {
+    setManualEditorTool(tool);
+    const descriptions: Record<ManualEditorTool, string> = {
+      brush: selectedColor ? '按住并拖动以连续绘制' : '请先从调色盘选择画笔颜色',
+      eraser: '按住并拖动以擦除，可调整橡皮大小',
+      fill: '点击任意格，填充与它相连的同色区域',
+      replace: '点击一种颜色，替换图中所有不连续的同色格',
+      picker: '点击图纸中的格子吸取颜色',
+      pan: '拖动画布查看细节，也可随时按住空格',
+    };
+    setManualEditorStatus(descriptions[tool]);
+  }, [selectedColor]);
+
+  const enterManualEditor = useCallback(() => {
+    setIsManualColoringMode(true);
+    setManualEditorTool('brush');
+    setManualEditorZoom(1);
+    setShowManualGrid(true);
+    setTooltipData(null);
+    setIsFloatingPaletteOpen(true);
+    resetManualHistory();
+
+    const firstAvailableColor = currentGridColors[0] ?? null;
+    setSelectedColor(firstAvailableColor);
+    setManualEditorStatus(
+      firstAvailableColor
+        ? '画笔已就绪：按住并拖动即可连续绘制'
+        : '请先从调色盘选择画笔颜色'
+    );
+  }, [currentGridColors, resetManualHistory]);
+
+  const exitManualEditor = useCallback(() => {
+    if (strokeStartSnapshotRef.current && strokeChangedRef.current && mappedPixelDataRef.current) {
+      pushManualHistory(strokeStartSnapshotRef.current);
+      refreshManualEditorStats(mappedPixelDataRef.current);
+    }
+    setIsManualColoringMode(false);
+    setSelectedColor(null);
+    setTooltipData(null);
+    setHighlightColorKey(null);
+    strokeStartSnapshotRef.current = null;
+    lastStrokeCellRef.current = null;
+    strokeChangedRef.current = false;
+  }, [pushManualHistory, refreshManualEditorStats]);
+
+  useEffect(() => {
+    if (!isManualColoringMode) return;
+
+    const handleEditorShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      const key = event.key.toLowerCase();
+      const commandKey = event.ctrlKey || event.metaKey;
+
+      if (commandKey && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) handleManualRedo();
+        else handleManualUndo();
+        return;
+      }
+      if (commandKey && key === 'y') {
+        event.preventDefault();
+        handleManualRedo();
+        return;
+      }
+
+      const toolShortcuts: Partial<Record<string, ManualEditorTool>> = {
+        b: 'brush',
+        e: 'eraser',
+        g: 'fill',
+        r: 'replace',
+        i: 'picker',
+        h: 'pan',
+      };
+      const shortcutTool = toolShortcuts[key];
+      if (shortcutTool) {
+        event.preventDefault();
+        handleManualToolChange(shortcutTool);
+        return;
+      }
+
+      if (event.key === '[' || event.key === ']') {
+        event.preventDefault();
+        setManualBrushSize(size => Math.max(1, Math.min(24, size + (event.key === ']' ? 1 : -1))));
+        return;
+      }
+      if (event.key === '0') {
+        event.preventDefault();
+        setManualEditorZoom(1);
+        return;
+      }
+      if (event.key === '+' || event.key === '=') {
+        event.preventDefault();
+        setManualEditorZoom(value => Math.min(8, value * 1.25));
+        return;
+      }
+      if (event.key === '-' || event.key === '_') {
+        event.preventDefault();
+        setManualEditorZoom(value => Math.max(0.25, value / 1.25));
+      }
+    };
+
+    window.addEventListener('keydown', handleEditorShortcut);
+    return () => window.removeEventListener('keydown', handleEditorShortcut);
+  }, [
+    handleManualRedo,
+    handleManualToolChange,
+    handleManualUndo,
+    isManualColoringMode,
+  ]);
+
   // 处理自定义色板中单个颜色的选择变化
   const handleSelectionChange = (hexValue: string, isSelected: boolean) => {
     const normalizedHex = hexValue.toUpperCase();
@@ -1579,44 +1774,11 @@ export default function Home() {
 
   // 新增：处理颜色选择，同时管理模式切换
   const handleColorSelect = (colorData: { key: string; color: string; isExternal?: boolean }) => {
-    // 如果选择的是橡皮擦（透明色）且当前在颜色替换模式，退出替换模式
-    if (colorData.key === TRANSPARENT_KEY && colorReplaceState.isActive) {
-      setColorReplaceState({
-        isActive: false,
-        step: 'select-source'
-      });
-      setHighlightColorKey(null);
+    setSelectedColor({ ...colorData, isExternal: false });
+    if (manualEditorTool === 'eraser' || manualEditorTool === 'picker' || manualEditorTool === 'pan') {
+      setManualEditorTool('brush');
     }
-    
-    // 选择任何颜色（包括橡皮擦）时，都应该退出一键擦除模式
-    if (isEraseMode) {
-      setIsEraseMode(false);
-    }
-    
-    // 设置选中的颜色
-    setSelectedColor(colorData);
-  };
-
-  // 新增：颜色替换相关处理函数
-  const handleColorReplaceToggle = () => {
-    setColorReplaceState(prev => {
-      if (prev.isActive) {
-        // 退出替换模式
-        return {
-          isActive: false,
-          step: 'select-source'
-        };
-      } else {
-        // 进入替换模式
-        // 只退出冲突的模式，但保持在手动上色模式下
-        setIsEraseMode(false);
-        setSelectedColor(null);
-        return {
-          isActive: true,
-          step: 'select-source'
-        };
-      }
-    });
+    setManualEditorStatus(`已选择 ${colorData.color.toUpperCase()}，可以开始绘制`);
   };
 
   // 新增：处理从画布选择源颜色
@@ -1631,71 +1793,6 @@ export default function Home() {
         sourceColor: colorData
       });
     }
-  };
-
-  // 新增：执行颜色替换
-  const handleColorReplace = (sourceColor: { key: string; color: string }, targetColor: { key: string; color: string }) => {
-    if (!mappedPixelData || !gridDimensions) return;
-
-    const { N, M } = gridDimensions;
-    const newPixelData = mappedPixelData.map(row => row.map(cell => ({ ...cell })));
-    let replaceCount = 0;
-
-    // 遍历所有像素，替换匹配的颜色
-    for (let j = 0; j < M; j++) {
-      for (let i = 0; i < N; i++) {
-        const currentCell = newPixelData[j][i];
-        if (currentCell && !currentCell.isExternal && 
-            currentCell.color.toUpperCase() === sourceColor.color.toUpperCase()) {
-          // 替换颜色
-          newPixelData[j][i] = {
-            key: targetColor.key,
-            color: targetColor.color,
-            isExternal: false
-          };
-          replaceCount++;
-        }
-      }
-    }
-
-    if (replaceCount > 0) {
-      // 更新像素数据
-      setMappedPixelData(newPixelData);
-
-      // 重新计算颜色统计
-      if (colorCounts) {
-        const newColorCounts: { [hexKey: string]: { count: number; color: string } } = {};
-        let newTotalCount = 0;
-
-        newPixelData.flat().forEach(cell => {
-          if (cell && !cell.isExternal && cell.key !== TRANSPARENT_KEY) {
-            const cellHex = cell.color.toUpperCase();
-            if (!newColorCounts[cellHex]) {
-              newColorCounts[cellHex] = {
-                count: 0,
-                color: cellHex
-              };
-            }
-            newColorCounts[cellHex].count++;
-            newTotalCount++;
-          }
-        });
-
-        setColorCounts(newColorCounts);
-        setTotalBeadCount(newTotalCount);
-      }
-
-      console.log(`颜色替换完成：将 ${replaceCount} 个 ${sourceColor.key} 替换为 ${targetColor.key}`);
-    }
-
-    // 退出替换模式
-    setColorReplaceState({
-      isActive: false,
-      step: 'select-source'
-    });
-    
-    // 清除高亮
-    setHighlightColorKey(null);
   };
 
   // 生成完整色板数据（用户自定义色板中选中的所有颜色）
@@ -2130,14 +2227,14 @@ export default function Home() {
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
-                        <span>使用右上角菜单操作</span>
+                        <span>画笔、橡皮、油漆桶、全局换色、吸管与抓手均在右侧工具栏</span>
                       </div>
                       <span className="hidden sm:inline text-gray-300 dark:text-gray-500">|</span>
                       <div className="flex items-center gap-1 w-full sm:w-auto">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
-                        <span>推荐电脑操作，上色更精准</span>
+                        <span>滚轮缩放；空格拖动；Ctrl/⌘+Z 撤销；[ ] 调笔刷</span>
                       </div>
                     </div>
                   </div>
@@ -2159,7 +2256,7 @@ export default function Home() {
                   </div>
                 )}
                  {/* Inner container background - 允许水平滚动以适应大画布 */}
-                <div className="flex justify-center mb-3 sm:mb-4 bg-gray-100 dark:bg-gray-700 p-2 rounded-lg overflow-x-auto overflow-y-hidden"
+                <div className="mb-3 sm:mb-4 bg-gray-100 dark:bg-gray-700 p-2 rounded-lg"
                      style={{ minHeight: '150px' }}>
                   {/* PixelatedPreviewCanvas component needs internal changes for dark mode drawing */}
                   <PixelatedPreviewCanvas
@@ -2168,6 +2265,13 @@ export default function Home() {
                     gridDimensions={gridDimensions}
                     isManualColoringMode={isManualColoringMode}
                     onInteraction={handleCanvasInteraction}
+                    editorTool={manualEditorTool}
+                    brushSize={manualBrushSize}
+                    brushShape={manualBrushShape}
+                    zoom={isManualColoringMode ? manualEditorZoom : 1}
+                    showGrid={isManualColoringMode ? showManualGrid : true}
+                    onZoomChange={setManualEditorZoom}
+                    onEditPointer={handleManualEditorPointer}
                     highlightColorKey={highlightColorKey}
                     onHighlightComplete={handleHighlightComplete}
                   />
@@ -2335,11 +2439,7 @@ export default function Home() {
             <div className="w-full md:max-w-2xl mt-4 space-y-3"> {/* Wrapper div */} 
              {/* Manual Edit Mode Button */}
              <button
-                onClick={() => {
-                  setIsManualColoringMode(true); // Enter mode
-                  setSelectedColor(null);
-                  setTooltipData(null);
-                }}
+                onClick={enterManualEditor}
                 className={`w-full py-2.5 px-4 text-sm sm:text-base rounded-lg transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg hover:translate-y-[-1px]`}
               >
                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /> </svg>
@@ -2385,23 +2485,26 @@ export default function Home() {
       {/* 悬浮工具栏 */}
       <FloatingToolbar
         isManualColoringMode={isManualColoringMode}
+        activeTool={manualEditorTool}
+        brushSize={manualBrushSize}
+        brushShape={manualBrushShape}
+        zoom={manualEditorZoom}
+        showGrid={showManualGrid}
+        selectedColor={selectedColor}
+        statusMessage={manualEditorStatus}
+        canUndo={undoHistoryRef.current.length > 0}
+        canRedo={redoHistoryRef.current.length > 0}
         isPaletteOpen={isFloatingPaletteOpen}
+        onToolChange={handleManualToolChange}
+        onBrushSizeChange={setManualBrushSize}
+        onBrushShapeChange={setManualBrushShape}
+        onZoomChange={setManualEditorZoom}
+        onResetZoom={() => setManualEditorZoom(1)}
+        onToggleGrid={() => setShowManualGrid(value => !value)}
+        onUndo={handleManualUndo}
+        onRedo={handleManualRedo}
         onTogglePalette={() => setIsFloatingPaletteOpen(!isFloatingPaletteOpen)}
-        onExitManualMode={() => {
-          setIsManualColoringMode(false);
-          setSelectedColor(null);
-          setTooltipData(null);
-          setIsEraseMode(false);
-          setColorReplaceState({
-            isActive: false,
-            step: 'select-source'
-          });
-          setHighlightColorKey(null);
-          setIsMagnifierActive(false);
-          setMagnifierSelectionArea(null);
-        }}
-        onToggleMagnifier={handleToggleMagnifier}
-        isMagnifierActive={isMagnifierActive}
+        onExitManualMode={exitManualEditor}
       />
 
       {/* 悬浮调色盘 */}
@@ -2411,50 +2514,15 @@ export default function Home() {
           selectedColor={selectedColor}
           onColorSelect={handleColorSelect}
           selectedColorSystem={selectedColorSystem}
-          isEraseMode={isEraseMode}
-          onEraseToggle={handleEraseToggle}
           fullPaletteColors={fullPaletteColors}
           showFullPalette={showFullPalette}
           onToggleFullPalette={handleToggleFullPalette}
-          colorReplaceState={colorReplaceState}
-          onColorReplaceToggle={handleColorReplaceToggle}
-          onColorReplace={handleColorReplace}
           onHighlightColor={handleHighlightColor}
           isOpen={isFloatingPaletteOpen}
           onToggleOpen={() => setIsFloatingPaletteOpen(!isFloatingPaletteOpen)}
-          isActive={activeFloatingTool === 'palette'}
-          onActivate={handleActivatePalette}
+          isActive={true}
+          onActivate={() => undefined}
         />
-      )}
-
-      {/* 放大镜工具 */}
-      {isManualColoringMode && (
-        <>
-          <MagnifierTool
-            isActive={isMagnifierActive}
-            onToggle={handleToggleMagnifier}
-            mappedPixelData={mappedPixelData}
-            gridDimensions={gridDimensions}
-            selectedColor={selectedColor}
-            selectedColorSystem={selectedColorSystem}
-            onPixelEdit={handleMagnifierPixelEdit}
-            cellSize={gridDimensions ? Math.min(6, Math.max(4, 500 / Math.max(gridDimensions.N, gridDimensions.M))) : 6}
-            selectionArea={magnifierSelectionArea}
-            onClearSelection={() => setMagnifierSelectionArea(null)}
-            isFloatingActive={activeFloatingTool === 'magnifier'}
-            onActivateFloating={handleActivateMagnifier}
-            highlightColorKey={highlightColorKey}
-          />
-          
-          {/* 放大镜选择覆盖层 */}
-          <MagnifierSelectionOverlay
-            isActive={isMagnifierActive && !magnifierSelectionArea}
-            canvasRef={pixelatedCanvasRef}
-            gridDimensions={gridDimensions}
-            cellSize={gridDimensions ? Math.min(6, Math.max(4, 500 / Math.max(gridDimensions.N, gridDimensions.M))) : 6}
-            onSelectionComplete={setMagnifierSelectionArea}
-          />
-        </>
       )}
 
       {/* Apply dark mode styles to the Footer */}

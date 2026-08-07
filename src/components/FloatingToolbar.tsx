@@ -1,70 +1,242 @@
 'use client';
 
 import React from 'react';
+import { MappedPixel } from '../utils/pixelation';
+import { BrushShape, ManualEditorTool } from '../types/manualEditor';
 
 interface FloatingToolbarProps {
   isManualColoringMode: boolean;
+  activeTool: ManualEditorTool;
+  brushSize: number;
+  brushShape: BrushShape;
+  zoom: number;
+  showGrid: boolean;
+  selectedColor: MappedPixel | null;
+  statusMessage: string;
+  canUndo: boolean;
+  canRedo: boolean;
   isPaletteOpen: boolean;
+  onToolChange: (tool: ManualEditorTool) => void;
+  onBrushSizeChange: (size: number) => void;
+  onBrushShapeChange: (shape: BrushShape) => void;
+  onZoomChange: (zoom: number) => void;
+  onResetZoom: () => void;
+  onToggleGrid: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
   onTogglePalette: () => void;
   onExitManualMode: () => void;
-  onToggleMagnifier: () => void;
-  isMagnifierActive: boolean;
 }
+
+const tools: Array<{ id: ManualEditorTool; label: string; shortcut: string; icon: string }> = [
+  { id: 'brush', label: '画笔', shortcut: 'B', icon: '✎' },
+  { id: 'eraser', label: '橡皮擦', shortcut: 'E', icon: '◇' },
+  { id: 'fill', label: '油漆桶', shortcut: 'G', icon: '▰' },
+  { id: 'replace', label: '全局换色', shortcut: 'R', icon: '⇄' },
+  { id: 'picker', label: '吸管', shortcut: 'I', icon: '⌁' },
+  { id: 'pan', label: '抓手', shortcut: 'H', icon: '✋' },
+];
+
+const clampZoom = (zoom: number) => Math.max(0.25, Math.min(8, zoom));
 
 const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   isManualColoringMode,
+  activeTool,
+  brushSize,
+  brushShape,
+  zoom,
+  showGrid,
+  selectedColor,
+  statusMessage,
+  canUndo,
+  canRedo,
   isPaletteOpen,
+  onToolChange,
+  onBrushSizeChange,
+  onBrushShapeChange,
+  onZoomChange,
+  onResetZoom,
+  onToggleGrid,
+  onUndo,
+  onRedo,
   onTogglePalette,
   onExitManualMode,
-  onToggleMagnifier,
-  isMagnifierActive
 }) => {
   if (!isManualColoringMode) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2">
-      {/* 调色盘开关按钮 */}
-      <button
-        onClick={onTogglePalette}
-        className={`w-12 h-12 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center ${
-          isPaletteOpen
-            ? 'bg-blue-500 text-white hover:bg-blue-600'
-            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600'
-        }`}
-        title={isPaletteOpen ? '关闭调色盘' : '打开调色盘'}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486zM16 18H9.071l6-6H16a2 2 0 012 2v2a2 2 0 01-2 2z" clipRule="evenodd" />
-        </svg>
-      </button>
+    <aside
+      className="fixed bottom-3 right-3 z-[100] w-[min(320px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-gray-200 bg-white/95 shadow-2xl backdrop-blur dark:border-gray-600 dark:bg-gray-800/95 sm:bottom-auto sm:top-4"
+      aria-label="手动绘图工具栏"
+      data-testid="drawing-toolbar"
+    >
+      <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2.5 text-white">
+        <div>
+          <div className="text-sm font-semibold">图纸编辑器</div>
+          <div className="text-[10px] text-blue-100">滚轮缩放 · 空格拖动画布</div>
+        </div>
+        <button
+          type="button"
+          onClick={onExitManualMode}
+          className="rounded-lg p-1.5 hover:bg-white/20"
+          title="完成并退出编辑"
+          aria-label="完成并退出编辑"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
-      {/* 放大镜按钮 */}
-      <button
-        onClick={onToggleMagnifier}
-        className={`w-12 h-12 rounded-full shadow-lg transition-all duration-200 flex items-center justify-center ${
-          isMagnifierActive
-            ? 'bg-green-500 text-white hover:bg-green-600'
-            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600'
-        }`}
-        title={isMagnifierActive ? '关闭放大镜' : '打开放大镜'}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      </button>
+      <div className="max-h-[calc(100vh-110px)] space-y-3 overflow-y-auto p-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo}
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            title="撤销 (Ctrl/⌘+Z)"
+          >
+            ↶ 撤销
+          </button>
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo}
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-xs text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            title="重做 (Ctrl/⌘+Shift+Z)"
+          >
+            ↷ 重做
+          </button>
+        </div>
 
-      {/* 退出手动编辑模式按钮 */}
-      <button
-        onClick={onExitManualMode}
-        className="w-12 h-12 rounded-full bg-red-500 text-white shadow-lg hover:bg-red-600 transition-all duration-200 flex items-center justify-center"
-        title="退出手动编辑模式"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-    </div>
+        <div className="grid grid-cols-3 gap-2">
+          {tools.map(tool => (
+            <button
+              key={tool.id}
+              type="button"
+              onClick={() => onToolChange(tool.id)}
+              className={`relative flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 py-2 text-xs transition-all ${
+                activeTool === tool.id
+                  ? 'border-blue-500 bg-blue-500 text-white shadow-md'
+                  : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+              }`}
+              title={`${tool.label} (${tool.shortcut})`}
+              data-testid={`tool-${tool.id}`}
+            >
+              <span className="mb-0.5 text-lg leading-none" aria-hidden="true">{tool.icon}</span>
+              <span>{tool.label}</span>
+              <span className={`absolute right-1 top-0.5 text-[9px] ${activeTool === tool.id ? 'text-blue-100' : 'text-gray-400'}`}>
+                {tool.shortcut}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {(activeTool === 'brush' || activeTool === 'eraser') && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-600 dark:bg-gray-700/60">
+            <div className="mb-2 flex items-center justify-between text-xs text-gray-600 dark:text-gray-300">
+              <span>笔刷大小</span>
+              <strong>{brushSize} × {brushSize}</strong>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="24"
+              step="1"
+              value={brushSize}
+              onChange={event => onBrushSizeChange(Number(event.target.value))}
+              className="w-full accent-blue-600"
+              aria-label="笔刷大小"
+              data-testid="brush-size"
+            />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onBrushShapeChange('circle')}
+                className={`rounded-lg border py-1.5 text-xs ${brushShape === 'circle' ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
+              >
+                ● 圆形
+              </button>
+              <button
+                type="button"
+                onClick={() => onBrushShapeChange('square')}
+                className={`rounded-lg border py-1.5 text-xs ${brushShape === 'square' ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
+              >
+                ■ 方形
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-gray-200 p-2.5 dark:border-gray-600">
+          <div className="mb-2 flex items-center justify-between text-xs text-gray-600 dark:text-gray-300">
+            <span>画布缩放</span>
+            <strong>{Math.round(zoom * 100)}%</strong>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onZoomChange(clampZoom(zoom / 1.25))}
+              className="h-8 w-8 rounded-lg bg-gray-100 text-lg hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+              aria-label="缩小"
+            >−</button>
+            <input
+              type="range"
+              min="25"
+              max="800"
+              step="5"
+              value={Math.round(zoom * 100)}
+              onChange={event => onZoomChange(Number(event.target.value) / 100)}
+              className="min-w-0 flex-1 accent-blue-600"
+              aria-label="画布缩放"
+              data-testid="zoom-slider"
+            />
+            <button
+              type="button"
+              onClick={() => onZoomChange(clampZoom(zoom * 1.25))}
+              className="h-8 w-8 rounded-lg bg-gray-100 text-lg hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+              aria-label="放大"
+            >+</button>
+            <button
+              type="button"
+              onClick={onResetZoom}
+              className="h-8 rounded-lg bg-gray-100 px-2 text-[10px] hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+              title="重置为 100% (0)"
+            >1:1</button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onTogglePalette}
+            className={`rounded-lg border px-2 py-2 text-xs ${isPaletteOpen ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
+          >
+            🎨 {isPaletteOpen ? '收起色板' : '打开色板'}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleGrid}
+            className={`rounded-lg border px-2 py-2 text-xs ${showGrid ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
+          >
+            # {showGrid ? '隐藏网格' : '显示网格'}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 rounded-xl bg-gray-100 px-2.5 py-2 dark:bg-gray-700">
+          <span
+            className="h-7 w-7 flex-none rounded-lg border-2 border-white shadow"
+            style={{ backgroundColor: selectedColor?.isExternal ? 'transparent' : selectedColor?.color ?? '#FFFFFF' }}
+            aria-label="当前颜色"
+          />
+          <p className="min-w-0 text-xs leading-4 text-gray-600 dark:text-gray-200" aria-live="polite">
+            {statusMessage}
+          </p>
+        </div>
+      </div>
+    </aside>
   );
 };
 
-export default FloatingToolbar; 
+export default FloatingToolbar;
