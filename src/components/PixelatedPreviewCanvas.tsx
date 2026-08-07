@@ -7,6 +7,7 @@ import {
   EditorPointerPhase,
   GridCellPosition,
   ManualEditorTool,
+  TouchInteractionMode,
 } from '../types/manualEditor';
 
 interface PixelatedPreviewCanvasProps {
@@ -25,6 +26,7 @@ interface PixelatedPreviewCanvasProps {
   editorTool: ManualEditorTool;
   brushSize: number;
   brushShape: BrushShape;
+  touchInteractionMode: TouchInteractionMode;
   zoom: number;
   showGrid: boolean;
   onZoomChange: (zoom: number) => void;
@@ -163,6 +165,7 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
   editorTool,
   brushSize,
   brushShape,
+  touchInteractionMode,
   zoom,
   showGrid,
   onZoomChange,
@@ -173,12 +176,24 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
   const viewportRef = useRef<HTMLDivElement>(null);
   const pointerStateRef = useRef<{
     id: number;
-    mode: 'edit' | 'pan';
+    mode: 'edit' | 'pan' | 'tap';
     startX: number;
     startY: number;
     scrollLeft: number;
     scrollTop: number;
   } | null>(null);
+  const activeTouchPointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const activePenPointerRef = useRef<number | null>(null);
+  const touchGestureRef = useRef<{
+    pointerIds: [number, number];
+    startDistance: number;
+    startZoom: number;
+    contentX: number;
+    contentY: number;
+    viewportLeft: number;
+    viewportTop: number;
+  } | null>(null);
+  const suppressTouchRef = useRef(false);
   const [darkModeState, setDarkModeState] = useState<boolean | null>(null);
   const [isHighlighting, setIsHighlighting] = useState(false);
   const [hoveredCell, setHoveredCell] = useState<GridCellPosition | null>(null);
@@ -252,6 +267,35 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
       : null;
   }, [canvasRef, gridDimensions]);
 
+  const beginTouchGesture = () => {
+    const viewport = viewportRef.current;
+    const pointers = Array.from(activeTouchPointersRef.current.entries()).slice(0, 2);
+    if (!viewport || pointers.length < 2) return;
+
+    const [[firstId, first], [secondId, second]] = pointers;
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
+    const viewportRect = viewport.getBoundingClientRect();
+    const cursorX = centerX - viewportRect.left;
+    const cursorY = centerY - viewportRect.top;
+
+    if (pointerStateRef.current?.mode === 'edit') {
+      onEditPointer(null, 'cancel');
+    }
+    pointerStateRef.current = null;
+    suppressTouchRef.current = true;
+    setHoveredCell(null);
+    touchGestureRef.current = {
+      pointerIds: [firstId, secondId],
+      startDistance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+      startZoom: zoom,
+      contentX: viewport.scrollLeft + cursorX,
+      contentY: viewport.scrollTop + cursorY,
+      viewportLeft: viewportRect.left,
+      viewportTop: viewportRect.top,
+    };
+  };
+
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -261,28 +305,87 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
       }
       return;
     }
-    const shouldPan = isManualColoringMode && (editorTool === 'pan' || isSpacePressed || event.button === 1);
-    if (isManualColoringMode && !shouldPan && event.button !== 0) return;
+
+    const isTouch = event.pointerType === 'touch';
+    const isPen = event.pointerType === 'pen';
+    if (isTouch && activePenPointerRef.current !== null) {
+      // 触控笔落下时忽略手掌产生的触摸点，避免中断正在进行的笔画。
+      event.preventDefault();
+      return;
+    }
+    const shouldPan = editorTool === 'pan'
+      || (!isTouch && isSpacePressed)
+      || event.button === 1
+      || (isTouch && touchInteractionMode === 'navigate');
+    if (!shouldPan && event.button !== 0) return;
 
     event.preventDefault();
+    if (isPen) activePenPointerRef.current = event.pointerId;
     event.currentTarget.setPointerCapture(event.pointerId);
+
+    if (isTouch) {
+      activeTouchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (activeTouchPointersRef.current.size >= 2) {
+        beginTouchGesture();
+        return;
+      }
+      if (suppressTouchRef.current) return;
+    }
+
+    const position = getGridPosition(event.clientX, event.clientY);
+    setHoveredCell(isTouch ? null : position);
+    const isAtomicTouchTool = isTouch
+      && !shouldPan
+      && (editorTool === 'fill' || editorTool === 'replace' || editorTool === 'picker');
+    const pointerMode = shouldPan ? 'pan' : isAtomicTouchTool ? 'tap' : 'edit';
     pointerStateRef.current = {
       id: event.pointerId,
-      mode: shouldPan ? 'pan' : 'edit',
+      mode: pointerMode,
       startX: event.clientX,
       startY: event.clientY,
       scrollLeft: viewport.scrollLeft,
       scrollTop: viewport.scrollTop,
     };
 
-    const position = getGridPosition(event.clientX, event.clientY);
-    setHoveredCell(position);
-    if (isManualColoringMode && !shouldPan) onEditPointer(position, 'start');
+    // 触控笔始终保持和鼠标相同的即时反馈；手指的原子工具等抬起后再执行，
+    // 这样第二根手指加入缩放时不会误触油漆桶或全局换色。
+    if (pointerMode === 'edit' && (!isTouch || isPen || touchInteractionMode === 'draw')) {
+      onEditPointer(position, 'start');
+    }
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
+    const isTouch = event.pointerType === 'touch';
+    if (isTouch && activePenPointerRef.current !== null) return;
+    if (isTouch && activeTouchPointersRef.current.has(event.pointerId)) {
+      activeTouchPointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    const gesture = touchGestureRef.current;
+    if (isTouch && gesture) {
+      const first = activeTouchPointersRef.current.get(gesture.pointerIds[0]);
+      const second = activeTouchPointersRef.current.get(gesture.pointerIds[1]);
+      const viewport = viewportRef.current;
+      if (!first || !second || !viewport) return;
+
+      event.preventDefault();
+      const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+      const centerX = (first.x + second.x) / 2;
+      const centerY = (first.y + second.y) / 2;
+      const nextZoom = Math.max(0.25, Math.min(8, gesture.startZoom * (distance / gesture.startDistance)));
+      const ratio = nextZoom / gesture.startZoom;
+      onZoomChange(nextZoom);
+      requestAnimationFrame(() => {
+        viewport.scrollLeft = gesture.contentX * ratio - (centerX - gesture.viewportLeft);
+        viewport.scrollTop = gesture.contentY * ratio - (centerY - gesture.viewportTop);
+      });
+      return;
+    }
+
+    if (isTouch && suppressTouchRef.current) return;
+
     const position = getGridPosition(event.clientX, event.clientY);
-    setHoveredCell(position);
+    if (!isTouch) setHoveredCell(position);
     const pointerState = pointerStateRef.current;
 
     if (pointerState?.id === event.pointerId) {
@@ -292,7 +395,7 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
           viewport.scrollLeft = pointerState.scrollLeft - (event.clientX - pointerState.startX);
           viewport.scrollTop = pointerState.scrollTop - (event.clientY - pointerState.startY);
         }
-      } else if (isManualColoringMode) {
+      } else if (pointerState.mode === 'edit' && isManualColoringMode) {
         onEditPointer(position, 'move');
       }
       return;
@@ -303,11 +406,39 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
     }
   };
 
-  const finishPointer = (event: PointerEvent<HTMLCanvasElement>) => {
+  const finishPointer = (event: PointerEvent<HTMLCanvasElement>, cancelled: boolean) => {
+    const isTouch = event.pointerType === 'touch';
+    if (event.pointerType === 'pen' && activePenPointerRef.current === event.pointerId) {
+      activePenPointerRef.current = null;
+    }
+    if (isTouch) activeTouchPointersRef.current.delete(event.pointerId);
+
+    const gesture = touchGestureRef.current;
+    if (isTouch && gesture) {
+      if (gesture.pointerIds.includes(event.pointerId)) touchGestureRef.current = null;
+      if (activeTouchPointersRef.current.size === 0) suppressTouchRef.current = false;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+
+    if (isTouch && suppressTouchRef.current) {
+      if (activeTouchPointersRef.current.size === 0) suppressTouchRef.current = false;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      return;
+    }
+
     const pointerState = pointerStateRef.current;
     if (!pointerState || pointerState.id !== event.pointerId) return;
+    const position = getGridPosition(event.clientX, event.clientY);
     if (pointerState.mode === 'edit' && isManualColoringMode) {
-      onEditPointer(getGridPosition(event.clientX, event.clientY), 'end');
+      onEditPointer(position, cancelled ? 'cancel' : 'end');
+    } else if (pointerState.mode === 'tap' && isManualColoringMode && !cancelled) {
+      onEditPointer(position, 'start');
+      onEditPointer(position, 'end');
     }
     pointerStateRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -368,9 +499,10 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
   return (
     <div
       ref={viewportRef}
-      className="relative w-full max-h-[70vh] overflow-auto rounded-lg bg-gray-200/70 dark:bg-gray-900/40 overscroll-contain"
+      className="relative w-full max-h-[70vh] overflow-auto overscroll-contain rounded-lg bg-gray-200/70 select-none dark:bg-gray-900/40"
       onWheel={handleWheel}
       data-testid="pixel-editor-viewport"
+      data-touch-mode={touchInteractionMode}
     >
       <div
         className="relative mx-auto"
@@ -383,8 +515,8 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
           ref={canvasRef}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
-          onPointerUp={finishPointer}
-          onPointerCancel={finishPointer}
+          onPointerUp={event => finishPointer(event, false)}
+          onPointerCancel={event => finishPointer(event, true)}
           onPointerLeave={handlePointerLeave}
           className={`absolute inset-0 block h-full w-full border border-gray-300 dark:border-gray-600 ${cursorClass}`}
           style={{ imageRendering: 'pixelated', touchAction: isManualColoringMode ? 'none' : 'auto' }}

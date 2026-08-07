@@ -44,6 +44,11 @@ const floatAnimation = `
   .animate-float {
     animation: float 3s ease-in-out infinite;
   }
+  @media (any-pointer: coarse) and (max-width: 1180px) {
+    .manual-editor-main {
+      padding-bottom: 62vh;
+    }
+  }
 `;
 
 // Helper function for sorting color keys - 保留原有实现，因为未在utils中导出
@@ -107,6 +112,7 @@ import {
   EditorPointerPhase,
   GridCellPosition,
   ManualEditorTool,
+  TouchInteractionMode,
 } from '../types/manualEditor';
 
 // 1. 导入新的 DonationModal 组件
@@ -193,6 +199,7 @@ export default function Home() {
   const [manualEditorTool, setManualEditorTool] = useState<ManualEditorTool>('brush');
   const [manualBrushSize, setManualBrushSize] = useState<number>(1);
   const [manualBrushShape, setManualBrushShape] = useState<BrushShape>('circle');
+  const [touchInteractionMode, setTouchInteractionMode] = useState<TouchInteractionMode>('navigate');
   const [manualEditorZoom, setManualEditorZoom] = useState<number>(1);
   const [showManualGrid, setShowManualGrid] = useState<boolean>(true);
   const [manualEditorStatus, setManualEditorStatus] = useState<string>('请选择颜色，然后在图纸上绘制');
@@ -1416,6 +1423,17 @@ export default function Home() {
     const currentData = mappedPixelDataRef.current;
     if (!currentData || !gridDimensions) return;
 
+    if (phase === 'cancel') {
+      if (strokeStartSnapshotRef.current && strokeChangedRef.current) {
+        applyManualEditorData(strokeStartSnapshotRef.current, false);
+      }
+      strokeStartSnapshotRef.current = null;
+      lastStrokeCellRef.current = null;
+      strokeChangedRef.current = false;
+      setManualEditorStatus('已进入双指手势，未完成的笔画已取消');
+      return;
+    }
+
     if (phase === 'end') {
       if (strokeStartSnapshotRef.current && strokeChangedRef.current) {
         pushManualHistory(strokeStartSnapshotRef.current);
@@ -1528,6 +1546,15 @@ export default function Home() {
     };
     setManualEditorStatus(descriptions[tool]);
   }, [selectedColor]);
+
+  const handleTouchInteractionModeChange = useCallback((mode: TouchInteractionMode) => {
+    setTouchInteractionMode(mode);
+    setManualEditorStatus(
+      mode === 'draw'
+        ? '手指绘制已开启；双指仍可随时缩放和平移'
+        : '手势导航已开启；单指移动画布，触控笔仍可绘制'
+    );
+  }, []);
 
   const enterManualEditor = useCallback(() => {
     setIsManualColoringMode(true);
@@ -2021,7 +2048,7 @@ export default function Home() {
       </header>
 
       {/* Apply dark mode styles to the main section */}
-      <main ref={mainRef} className="w-full md:max-w-4xl flex flex-col items-center space-y-5 sm:space-y-6 relative overflow-hidden">
+      <main ref={mainRef} className={`w-full md:max-w-4xl flex flex-col items-center space-y-5 sm:space-y-6 relative overflow-hidden ${isManualColoringMode ? 'manual-editor-main' : ''}`}>
         {/* Apply dark mode styles to the Drop Zone */}
         <div
           onDrop={handleDrop} onDragOver={handleDragOver} onDragEnter={handleDragOver}
@@ -2227,14 +2254,14 @@ export default function Home() {
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
-                        <span>画笔、橡皮、油漆桶、全局换色、吸管与抓手均在右侧工具栏</span>
+                        <span>画笔、橡皮、油漆桶、全局换色、吸管与抓手均在悬浮工具栏</span>
                       </div>
                       <span className="hidden sm:inline text-gray-300 dark:text-gray-500">|</span>
                       <div className="flex items-center gap-1 w-full sm:w-auto">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
-                        <span>滚轮缩放；空格拖动；Ctrl/⌘+Z 撤销；[ ] 调笔刷</span>
+                        <span>PC：滚轮/空格操作；平板：触控笔绘制、双指缩放和平移</span>
                       </div>
                     </div>
                   </div>
@@ -2268,6 +2295,7 @@ export default function Home() {
                     editorTool={manualEditorTool}
                     brushSize={manualBrushSize}
                     brushShape={manualBrushShape}
+                    touchInteractionMode={touchInteractionMode}
                     zoom={isManualColoringMode ? manualEditorZoom : 1}
                     showGrid={isManualColoringMode ? showManualGrid : true}
                     onZoomChange={setManualEditorZoom}
@@ -2488,6 +2516,7 @@ export default function Home() {
         activeTool={manualEditorTool}
         brushSize={manualBrushSize}
         brushShape={manualBrushShape}
+        touchInteractionMode={touchInteractionMode}
         zoom={manualEditorZoom}
         showGrid={showManualGrid}
         selectedColor={selectedColor}
@@ -2498,6 +2527,7 @@ export default function Home() {
         onToolChange={handleManualToolChange}
         onBrushSizeChange={setManualBrushSize}
         onBrushShapeChange={setManualBrushShape}
+        onTouchInteractionModeChange={handleTouchInteractionModeChange}
         onZoomChange={setManualEditorZoom}
         onResetZoom={() => setManualEditorZoom(1)}
         onToggleGrid={() => setShowManualGrid(value => !value)}

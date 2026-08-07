@@ -8,7 +8,9 @@ export type ManualEditorTool =
 
 export type BrushShape = 'circle' | 'square';
 
-export type EditorPointerPhase = 'start' | 'move' | 'end';
+export type TouchInteractionMode = 'draw' | 'navigate';
+
+export type EditorPointerPhase = 'start' | 'move' | 'end' | 'cancel';
 
 export interface GridCellPosition {
   row: number;

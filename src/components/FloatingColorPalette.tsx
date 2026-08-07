@@ -35,8 +35,8 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
 }) => {
   // 计算初始位置，确保左边缘在屏幕内（小屏幕时右边缘可以超出）
   const getInitialPosition = () => ({
-    x: Math.max(0, Math.min(20, window.innerWidth - 280)), // 确保左边缘至少是0
-    y: Math.max(0, Math.min(100, window.innerHeight - 400)) // 确保上边缘至少是0
+    x: Math.max(12, Math.min(20, window.innerWidth - 332)),
+    y: Math.max(12, Math.min(100, window.innerHeight - 420))
   });
   
   const [position, setPosition] = useState({ x: 20, y: 100 });
@@ -163,8 +163,8 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
       style={{
         left: position.x,
         top: position.y,
-        width: '280px',
-        maxHeight: '400px'
+        width: 'min(320px, calc(100vw - 24px))',
+        maxHeight: 'min(520px, calc(100vh - 140px))'
       }}
       onClick={onActivate}
     >
@@ -223,7 +223,7 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
           </div>
 
           {/* 颜色网格 */}
-          <div className="grid grid-cols-6 gap-1.5" data-testid="color-palette-grid">
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-6" data-testid="color-palette-grid">
             {displayColors.map((colorData) => {
               const isSelected = selectedColor?.color.toUpperCase() === colorData.color.toUpperCase();
               const displayKey = getColorKeyByHex(colorData.color, selectedColorSystem);
@@ -232,7 +232,7 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
                 <button
                   key={`${colorData.key}-${colorData.color}`}
                   onClick={() => handleColorClick(colorData)}
-                  className={`group relative aspect-square rounded-lg border-2 transition-all duration-200 hover:scale-110 ${
+                  className={`group relative aspect-square min-h-11 touch-manipulation rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
                     isSelected
                       ? 'border-blue-500 dark:border-blue-400 ring-2 ring-blue-200 dark:ring-blue-800 scale-110'
                       : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
