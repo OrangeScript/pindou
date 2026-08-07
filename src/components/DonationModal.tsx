@@ -25,7 +25,7 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose }) => {
                 <path d="M9.5 14.5L9 16" stroke="#7d2a5a" />
                 <path d="M14.5 14.5L15 16" stroke="#7d2a5a" />
               </svg>
-              Buy Me A Milk Tea
+              请我喝杯奶茶
             </h3>
             <button
               onClick={onClose}
@@ -63,4 +63,4 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose }) => {
   );
 };
 
-export default DonationModal; 
+export default DonationModal;

@@ -24,22 +24,22 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
       <div
         key={index}
         className={`w-3 h-3 rounded-full ${
-          isFilled ? 'bg-blue-500' : 'bg-gray-300'
+          isFilled ? 'bg-[var(--atelier-accent)]' : 'bg-[var(--atelier-paper-deep)]'
         }`}
       />
     );
   });
 
   return (
-    <div className="h-10 bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+    <div className="h-10 border-b-2 border-[var(--atelier-ink)] bg-[var(--atelier-surface)] px-4 py-2 flex items-center justify-between">
       <div className="flex items-center space-x-2">
         {progressDots}
-        <span className="ml-2 text-sm font-medium text-gray-700">
+        <span className="ml-2 font-mono text-sm font-bold text-[var(--atelier-ink)]">
           {progressPercentage}%
         </span>
       </div>
       
-      <div className="text-xs text-gray-500">
+      <div className="font-mono text-xs text-[var(--atelier-muted)]">
         {recommendedCell ? (
           <span>下一块 → {recommendedCell.row + 1},{recommendedCell.col + 1}</span>
         ) : (

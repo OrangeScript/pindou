@@ -342,6 +342,8 @@ const FocusCanvas: React.FC<FocusCanvasProps> = ({
       >
         <canvas
           ref={canvasRef}
+          role="img"
+          aria-label="专心拼豆进度画布"
           className="cursor-crosshair border border-gray-300"
           onClick={handleClick}
           onWheel={handleWheel}

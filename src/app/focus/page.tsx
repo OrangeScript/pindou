@@ -19,6 +19,12 @@ import SettingsPanel from '../../components/SettingsPanel';
 import CelebrationAnimation from '../../components/CelebrationAnimation';
 import CompletionCard from '../../components/CompletionCard';
 import { getColorKeyByHex, ColorSystem } from '../../utils/colorSystemUtils';
+import {
+  createFocusPatternId,
+  FOCUS_SESSION_STORAGE_KEY,
+  parseFocusSession,
+  serializeFocusSession,
+} from '../../utils/focusSession';
 
 interface FocusModeState {
   // 当前状态
@@ -61,6 +67,8 @@ export default function FocusMode() {
   // 从localStorage或URL参数获取像素数据
   const [mappedPixelData, setMappedPixelData] = useState<MappedPixel[][] | null>(null);
   const [gridDimensions, setGridDimensions] = useState<{ N: number; M: number } | null>(null);
+  const [patternId, setPatternId] = useState('');
+  const [isSessionReady, setIsSessionReady] = useState(false);
 
   // 专心模式状态
   const [focusState, setFocusState] = useState<FocusModeState>({
@@ -99,7 +107,7 @@ export default function FocusMode() {
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
-    if (!focusState.isPaused) {
+    if (isSessionReady && !focusState.isPaused) {
       interval = setInterval(() => {
         setFocusState(prev => {
           const now = Date.now();
@@ -118,7 +126,7 @@ export default function FocusMode() {
         clearInterval(interval);
       }
     };
-  }, [focusState.isPaused]);
+  }, [focusState.isPaused, isSessionReady]);
 
   // 从localStorage加载数据
   useEffect(() => {
@@ -135,6 +143,11 @@ export default function FocusMode() {
 
         setMappedPixelData(pixelData);
         setGridDimensions(dimensions);
+        const nextPatternId = createFocusPatternId(pixelData, dimensions);
+        const savedSession = parseFocusSession(
+          localStorage.getItem(FOCUS_SESSION_STORAGE_KEY),
+          nextPatternId
+        );
         
         // 设置色号系统 - 已移除未使用的状态
 
@@ -150,19 +163,72 @@ export default function FocusMode() {
             completed: 0
           };
         });
-        setAvailableColors(colors);
+        const restoredCells = new Set((savedSession?.completedCells ?? []).filter(cellKey => {
+          const [row, col] = cellKey.split(',').map(Number);
+          return row >= 0
+            && row < dimensions.M
+            && col >= 0
+            && col < dimensions.N
+            && pixelData[row]?.[col]
+            && !pixelData[row][col].isExternal;
+        }));
+        const completedByColor = Array.from(restoredCells).reduce<Record<string, number>>(
+          (counts, cellKey) => {
+            const [row, col] = cellKey.split(',').map(Number);
+            const color = pixelData[row]?.[col]?.color;
+            if (color) counts[color] = (counts[color] ?? 0) + 1;
+            return counts;
+          },
+          {}
+        );
+        const colorProgress = colors.reduce<Record<string, { completed: number; total: number }>>(
+          (progress, color) => {
+            progress[color.color] = {
+              completed: completedByColor[color.color] ?? 0,
+              total: color.total,
+            };
+            return progress;
+          },
+          {}
+        );
+        const restoredColors = colors.map(color => ({
+          ...color,
+          completed: colorProgress[color.color]?.completed ?? 0,
+        }));
+        setAvailableColors(restoredColors);
 
         // 设置初始当前颜色
         if (colors.length > 0) {
+          const restoredCurrentColor = colors.some(color => color.color === savedSession?.currentColor)
+            ? savedSession!.currentColor
+            : colors[0].color;
+          const restoredSelectedCell = savedSession?.selectedCell
+            && savedSession.selectedCell.row >= 0
+            && savedSession.selectedCell.row < dimensions.M
+            && savedSession.selectedCell.col >= 0
+            && savedSession.selectedCell.col < dimensions.N
+            ? savedSession.selectedCell
+            : null;
           setFocusState(prev => ({
             ...prev,
-            currentColor: colors[0].color,
-            colorProgress: colors.reduce((acc, color) => ({
-              ...acc,
-              [color.color]: { completed: 0, total: color.total }
-            }), {})
+            currentColor: restoredCurrentColor,
+            selectedCell: restoredSelectedCell,
+            canvasScale: savedSession?.canvasScale ?? 1,
+            canvasOffset: savedSession?.canvasOffset ?? { x: 0, y: 0 },
+            completedCells: restoredCells,
+            colorProgress,
+            guidanceMode: savedSession?.guidanceMode ?? 'nearest',
+            isPaused: savedSession?.isPaused ?? false,
+            totalElapsedTime: savedSession?.totalElapsedTime ?? 0,
+            lastResumeTime: Date.now(),
+            gridSectionInterval: savedSession?.gridSectionInterval ?? 10,
+            showSectionLines: savedSession?.showSectionLines ?? true,
+            sectionLineColor: savedSession?.sectionLineColor ?? '#007acc',
+            enableCelebration: savedSession?.enableCelebration ?? true,
           }));
         }
+        setPatternId(nextPatternId);
+        setIsSessionReady(true);
       } catch (error) {
         console.error('Failed to load focus mode data:', error);
         // 重定向到主页面
@@ -173,6 +239,47 @@ export default function FocusMode() {
       window.location.href = '/';
     }
   }, []);
+
+  useEffect(() => {
+    if (!isSessionReady || !patternId) return;
+
+    const saveTimer = window.setTimeout(() => {
+      localStorage.setItem(FOCUS_SESSION_STORAGE_KEY, serializeFocusSession({
+        version: 1,
+        patternId,
+        savedAt: Date.now(),
+        currentColor: focusState.currentColor,
+        selectedCell: focusState.selectedCell,
+        canvasScale: focusState.canvasScale,
+        canvasOffset: focusState.canvasOffset,
+        completedCells: Array.from(focusState.completedCells),
+        guidanceMode: focusState.guidanceMode,
+        isPaused: focusState.isPaused,
+        totalElapsedTime: focusState.totalElapsedTime,
+        gridSectionInterval: focusState.gridSectionInterval,
+        showSectionLines: focusState.showSectionLines,
+        sectionLineColor: focusState.sectionLineColor,
+        enableCelebration: focusState.enableCelebration,
+      }));
+    }, 200);
+
+    return () => window.clearTimeout(saveTimer);
+  }, [
+    focusState.canvasOffset,
+    focusState.canvasScale,
+    focusState.completedCells,
+    focusState.currentColor,
+    focusState.enableCelebration,
+    focusState.gridSectionInterval,
+    focusState.guidanceMode,
+    focusState.isPaused,
+    focusState.sectionLineColor,
+    focusState.selectedCell,
+    focusState.showSectionLines,
+    focusState.totalElapsedTime,
+    isSessionReady,
+    patternId,
+  ]);
 
   // 计算推荐的下一个区域
   const calculateRecommendedRegion = useCallback(() => {
@@ -457,10 +564,10 @@ export default function FocusMode() {
 
   if (!mappedPixelData || !gridDimensions) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--atelier-paper)] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">加载中...</p>
+          <div className="animate-spin rounded-sm h-12 w-12 border-4 border-[var(--atelier-ink)] border-b-[var(--atelier-accent)] mx-auto mb-4"></div>
+          <p className="font-mono text-[var(--atelier-ink)]">正在展开制作台...</p>
         </div>
       </div>
     );
@@ -471,22 +578,23 @@ export default function FocusMode() {
     Math.round((currentColorInfo.completed / currentColorInfo.total) * 100) : 0;
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="atelier-focus-shell h-screen flex flex-col bg-[var(--atelier-paper)]">
       {/* 顶部导航栏 */}
-      <header className="h-15 bg-white shadow-sm border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+      <header className="h-15 border-b-2 border-[var(--atelier-ink)] bg-[var(--atelier-surface)] px-4 py-3 flex items-center justify-between">
         <button 
           onClick={() => window.history.back()}
-          className="flex items-center text-gray-600 hover:text-gray-800"
+          className="flex items-center font-mono text-sm font-bold text-[var(--atelier-ink)] hover:text-[var(--atelier-accent)]"
         >
           <svg className="w-6 h-6 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           返回
         </button>
-        <h1 className="text-lg font-medium text-gray-800">专心拼豆（AlphaTest）</h1>
+        <h1 className="text-center font-mono text-sm font-black uppercase tracking-[0.16em] text-[var(--atelier-ink)] sm:text-base">Lazarus 制作台 · 专心拼豆</h1>
         <button 
           onClick={() => setFocusState(prev => ({ ...prev, showSettingsPanel: true }))}
-          className="text-gray-600 hover:text-gray-800"
+          aria-label="打开专心模式设置"
+          className="text-[var(--atelier-ink)] hover:text-[var(--atelier-accent)]"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />

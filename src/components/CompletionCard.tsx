@@ -446,7 +446,7 @@ const CompletionCard: React.FC<CompletionCardProps> = ({
                     </button>
                     <button
                       onClick={skipPhoto}
-                      className="w-full bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors"
+                      className="atelier-button atelier-button--signal w-full px-6 py-3"
                     >
                       🎨 跳过拍照，使用作品图
                     </button>
@@ -462,7 +462,7 @@ const CompletionCard: React.FC<CompletionCardProps> = ({
                   />
                   <button
                     onClick={takePhoto}
-                    className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors mr-2"
+                    className="atelier-button atelier-button--signal mr-2 px-6 py-3"
                   >
                     📸 拍照
                   </button>
@@ -522,4 +522,4 @@ const CompletionCard: React.FC<CompletionCardProps> = ({
   );
 };
 
-export default CompletionCard; 
+export default CompletionCard;

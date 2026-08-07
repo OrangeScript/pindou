@@ -132,18 +132,18 @@ const LocalPixelRefinerWidget: React.FC = () => {
       {isOpen && (
         <section
           aria-label="像素净化工具"
-          className="fixed left-4 top-20 z-[90] flex max-h-[calc(100vh-6rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-indigo-200/80 bg-white/95 shadow-2xl backdrop-blur-xl dark:border-indigo-800/70 dark:bg-gray-900/95 sm:left-6 sm:w-[440px]"
+          className="fixed left-4 top-20 z-[90] flex max-h-[calc(100vh-6rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden border border-[var(--atelier-ink)] bg-[var(--atelier-surface)]/95 shadow-[6px_6px_0_var(--atelier-accent)] backdrop-blur-xl sm:left-6 sm:w-[440px]"
         >
-          <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+          <header className="flex items-center justify-between border-b border-[var(--atelier-ink)] bg-[var(--atelier-signal)] px-4 py-3 text-[#1d1b18]">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">像素净化</h2>
-              <p className="mt-0.5 text-[11px] text-emerald-600 dark:text-emerald-400">仅在浏览器本地处理，不会上传图片</p>
+              <h2 className="text-sm font-black">像素净化</h2>
+              <p className="mt-0.5 text-[11px]">仅在浏览器本地处理，图片不会上传</p>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
               aria-label="关闭像素净化工具"
-              className="rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              className="border border-[#1d1b18] p-1.5 text-[#1d1b18] transition hover:bg-[#1d1b18] hover:text-[var(--atelier-signal)]"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M6 6l12 12M18 6L6 18" />
@@ -161,7 +161,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
                 const file = event.dataTransfer.files?.[0];
                 if (file) selectFile(file);
               }}
-              className="group flex min-h-28 w-full items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50/60 p-3 text-center transition hover:border-indigo-400 hover:bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/30 dark:hover:border-indigo-600"
+              className="group flex min-h-28 w-full items-center justify-center overflow-hidden border-2 border-dashed border-[var(--atelier-line)] bg-[var(--atelier-signal)]/10 p-3 text-center transition hover:border-[var(--atelier-accent)]"
             >
               {sourceUrl ? (
                 <div className="flex w-full items-center gap-3 text-left">
@@ -177,7 +177,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
                   <svg className="mx-auto h-8 w-8 text-indigo-400 transition group-hover:-translate-y-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <path d="M4 16.5V19a1 1 0 001 1h14a1 1 0 001-1v-2.5M8 8l4-4 4 4M12 4v11" />
                   </svg>
-                  <p className="mt-2 text-sm font-medium text-indigo-700 dark:text-indigo-300">点击上传或拖入像素风图片</p>
+                  <p className="mt-2 text-sm font-medium text-[var(--atelier-ink)]">点击上传或拖入像素风图片</p>
                   <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">支持 JPG、PNG、WebP，最大 30 MB</p>
                 </div>
               )}
@@ -185,6 +185,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
             <input
               ref={fileInputRef}
               type="file"
+              aria-label="选择要净化的像素图片"
               accept="image/jpeg,image/png,image/webp,image/gif"
               className="hidden"
               onChange={event => {
@@ -195,18 +196,18 @@ const LocalPixelRefinerWidget: React.FC = () => {
             />
 
             <div className="grid grid-cols-[1fr_120px] gap-2">
-              <label className="text-xs text-gray-600 dark:text-gray-300">
+              <label className="text-xs font-bold text-[var(--atelier-ink)]">
                 取样方式
                 <select
                   value={samplingMethod}
                   onChange={event => setSamplingMethod(event.target.value as PixelRefinerSamplingMethod)}
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:ring-indigo-900"
+                  className="atelier-field mt-1 w-full px-2.5 py-2 text-sm outline-none"
                 >
                   <option value="center">中心取样</option>
                   <option value="majority">多数颜色取样</option>
                 </select>
               </label>
-              <label className="text-xs text-gray-600 dark:text-gray-300">
+              <label className="text-xs font-bold text-[var(--atelier-ink)]">
                 横向格数
                 <input
                   type="number"
@@ -216,7 +217,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
                   value={manualColumns}
                   onChange={event => setManualColumns(event.target.value)}
                   placeholder="自动检测"
-                  className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-800 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:ring-indigo-900"
+                  className="atelier-field mt-1 w-full px-2.5 py-2 text-sm outline-none"
                 />
               </label>
             </div>
@@ -225,7 +226,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
               type="button"
               onClick={handleProcess}
               disabled={!sourceUrl || isProcessing}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-2.5 text-sm font-medium text-white shadow-md transition hover:from-indigo-600 hover:to-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="atelier-button atelier-button--accent w-full px-4 py-2.5 text-sm"
             >
               {isProcessing ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
@@ -245,18 +246,18 @@ const LocalPixelRefinerWidget: React.FC = () => {
             )}
 
             {result && (
-              <div className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-2.5 dark:border-gray-700 dark:bg-gray-800/70">
+              <div className="space-y-2 border border-[var(--atelier-line)] bg-[var(--atelier-surface)] p-2.5">
                 <div className="flex items-center justify-between gap-2 px-1">
                   <div>
                     <p className="text-xs font-medium text-gray-700 dark:text-gray-200">生成结果 · {result.width} × {result.height} 格</p>
                     <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                      {result.usedManualGrid ? '使用手动格数' : 'PerfectPixel 自动识别'} · 可拖动查看
+                      {result.usedManualGrid ? '使用手动格数' : '自动识别'} · 可拖动查看
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => resetPreviewPosition()}
-                    className="rounded-md px-2 py-1 text-[11px] text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/50"
+                    className="atelier-button atelier-button--signal px-2 py-1 text-[11px]"
                   >
                     居中
                   </button>
@@ -271,7 +272,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
                     event.preventDefault();
                     setZoom(current => clampZoom(current + (event.deltaY < 0 ? 1 : -1)));
                   }}
-                  className="relative flex h-64 touch-none select-none items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-[linear-gradient(45deg,#f3f4f6_25%,transparent_25%),linear-gradient(-45deg,#f3f4f6_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f3f4f6_75%),linear-gradient(-45deg,transparent_75%,#f3f4f6_75%)] bg-[length:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0px] active:cursor-grabbing dark:border-gray-700 dark:bg-gray-900"
+                  className="relative flex h-64 touch-none select-none items-center justify-center overflow-hidden border border-[var(--atelier-ink)] bg-[linear-gradient(45deg,#f3f4f6_25%,transparent_25%),linear-gradient(-45deg,#f3f4f6_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f3f4f6_75%),linear-gradient(-45deg,transparent_75%,#f3f4f6_75%)] bg-[length:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0px] active:cursor-grabbing dark:bg-gray-900"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -289,7 +290,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2 px-1">
-                  <button type="button" aria-label="缩小预览" onClick={() => setZoom(current => clampZoom(current - 1))} className="h-8 w-8 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">−</button>
+                  <button type="button" aria-label="缩小预览" onClick={() => setZoom(current => clampZoom(current - 1))} className="atelier-button atelier-button--ink h-8 w-8">−</button>
                   <input
                     type="range"
                     min={1}
@@ -297,9 +298,9 @@ const LocalPixelRefinerWidget: React.FC = () => {
                     value={zoom}
                     onChange={event => setZoom(Number(event.target.value))}
                     aria-label="预览和导出倍率"
-                    className="min-w-0 flex-1 accent-indigo-500"
+                    className="min-w-0 flex-1 [accent-color:var(--atelier-accent)]"
                   />
-                  <button type="button" aria-label="放大预览" onClick={() => setZoom(current => clampZoom(current + 1))} className="h-8 w-8 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">＋</button>
+                  <button type="button" aria-label="放大预览" onClick={() => setZoom(current => clampZoom(current + 1))} className="atelier-button atelier-button--ink h-8 w-8">＋</button>
                   <span className="w-8 text-right text-xs font-medium text-gray-600 dark:text-gray-300">{zoom}×</span>
                 </div>
 
@@ -307,7 +308,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
                   type="button"
                   onClick={handleDownload}
                   disabled={isDownloading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                  className="atelier-button atelier-button--signal w-full px-3 py-2.5 text-sm"
                 >
                   <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 20h14" />
@@ -325,7 +326,7 @@ const LocalPixelRefinerWidget: React.FC = () => {
         onClick={() => setIsOpen(current => !current)}
         aria-expanded={isOpen}
         aria-label={isOpen ? '收起像素净化工具' : '打开像素净化工具'}
-        className="fixed left-4 top-5 z-[90] flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 px-4 py-3 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 sm:left-6"
+        className="fixed left-4 top-5 z-[90] flex items-center gap-2 rounded-none border border-[var(--atelier-ink)] bg-[var(--atelier-signal)] px-4 py-3 text-sm font-bold text-[#1d1b18] shadow-[4px_4px_0_var(--atelier-ink)] transition hover:-translate-y-0.5 active:translate-y-0 sm:left-6"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <rect x="4" y="4" width="6" height="6" rx="1" />

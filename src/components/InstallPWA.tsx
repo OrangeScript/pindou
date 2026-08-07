@@ -53,7 +53,7 @@ export default function InstallPWA() {
 
   return (
     <button
-      className="fixed bottom-6 right-6 bg-gradient-to-r from-purple-500 to-blue-500 text-white px-6 py-3 rounded-full shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center gap-2 z-50"
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-2 border-2 border-[var(--atelier-ink)] bg-[var(--atelier-signal)] px-5 py-3 font-bold text-[#1d1b18] shadow-[4px_4px_0_var(--atelier-ink)] transition-transform hover:-translate-y-0.5"
       onClick={onClick}
       aria-label="安装应用"
     >

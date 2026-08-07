@@ -34,23 +34,6 @@ import {
   ColorSystem 
 } from '../utils/colorSystemUtils';
 
-// 添加自定义动画样式
-const floatAnimation = `
-  @keyframes float {
-    0% { transform: translateY(0px); }
-    50% { transform: translateY(-5px); }
-    100% { transform: translateY(0px); }
-  }
-  .animate-float {
-    animation: float 3s ease-in-out infinite;
-  }
-  @media (any-pointer: coarse) and (max-width: 1180px) {
-    .manual-editor-main {
-      padding-bottom: 62vh;
-    }
-  }
-`;
-
 // Helper function for sorting color keys - 保留原有实现，因为未在utils中导出
 function sortColorKeys(a: string, b: string): number {
   const regex = /^([A-Z]+)(\d+)$/;
@@ -119,6 +102,8 @@ import {
 import DonationModal from '../components/DonationModal';
 import FocusModePreDownloadModal from '../components/FocusModePreDownloadModal';
 import LocalPixelRefinerWidget from '../components/LocalPixelRefinerWidget';
+import BrandLogo from '../components/BrandLogo';
+import { notify } from '../utils/notifications';
 
 export default function Home() {
   const [originalImageSrc, setOriginalImageSrc] = useState<string | null>(null);
@@ -149,8 +134,6 @@ export default function Home() {
   const [remapTrigger, setRemapTrigger] = useState<number>(0);
   const [isManualColoringMode, setIsManualColoringMode] = useState<boolean>(false);
   const [selectedColor, setSelectedColor] = useState<MappedPixel | null>(null);
-  // 新增：一键擦除模式状态
-  const [isEraseMode, setIsEraseMode] = useState<boolean>(false);
   // 新增状态变量：控制打赏弹窗
   const [isDonationModalOpen, setIsDonationModalOpen] = useState<boolean>(false);
   const [customPaletteSelections, setCustomPaletteSelections] = useState<PaletteSelections>({});
@@ -179,16 +162,6 @@ export default function Home() {
   // 新增：完整色板切换状态
   const [showFullPalette, setShowFullPalette] = useState<boolean>(false);
   
-  // 新增：颜色替换相关状态
-  const [colorReplaceState, setColorReplaceState] = useState<{
-    isActive: boolean;
-    step: 'select-source' | 'select-target';
-    sourceColor?: { key: string; color: string };
-  }>({
-    isActive: false,
-    step: 'select-source'
-  });
-
   // 新增：组件挂载状态
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
@@ -361,43 +334,9 @@ export default function Home() {
     window.location.href = '/focus';
   };
 
-  // 添加一个安全的文件输入触发函数
   const triggerFileInput = useCallback(() => {
-    // 检查组件是否已挂载
-    if (!isMounted) {
-      console.warn("组件尚未完全挂载，延迟触发文件选择");
-      setTimeout(() => triggerFileInput(), 200);
-      return;
-    }
-    
-    // 检查 ref 是否存在
-    if (fileInputRef.current) {
-      try {
-        fileInputRef.current.click();
-      } catch (error) {
-        console.error("触发文件选择失败:", error);
-        // 如果直接点击失败，尝试延迟执行
-        setTimeout(() => {
-          try {
-            fileInputRef.current?.click();
-          } catch (retryError) {
-            console.error("重试触发文件选择失败:", retryError);
-          }
-        }, 100);
-      }
-    } else {
-      // 如果 ref 不存在，延迟重试
-      console.warn("文件输入引用不存在，将在100ms后重试");
-      setTimeout(() => {
-        if (fileInputRef.current) {
-          try {
-            fileInputRef.current.click();
-          } catch (error) {
-            console.error("延迟触发文件选择失败:", error);
-          }
-        }
-      }, 100);
-    }
+    if (!isMounted) return;
+    fileInputRef.current?.click();
   }, [isMounted]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -419,7 +358,7 @@ export default function Home() {
         setExcludedColorKeys(new Set()); // ++ 重置排除列表 ++
         processFile(file);
       } else {
-        alert(`不支持的文件类型: ${file.type || '未知'}。请选择 JPG、PNG 格式的图片文件，或 CSV 数据文件。\n文件名: ${file.name}`);
+        notify(`不支持的文件类型: ${file.type || '未知'}。请选择 JPG、PNG 格式的图片文件，或 CSV 数据文件。\n文件名: ${file.name}`, 'warning');
         console.warn(`Unsupported file type: ${file.type}, file name: ${file.name}`);
       }
     }
@@ -429,7 +368,7 @@ export default function Home() {
     }
   };
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     
@@ -453,17 +392,17 @@ export default function Home() {
           setExcludedColorKeys(new Set()); // ++ 重置排除列表 ++
           processFile(file);
         } else {
-          alert(`不支持的文件类型: ${file.type || '未知'}。请拖放 JPG、PNG 格式的图片文件，或 CSV 数据文件。\n文件名: ${file.name}`);
+          notify(`不支持的文件类型: ${file.type || '未知'}。请拖放 JPG、PNG 格式的图片文件，或 CSV 数据文件。\n文件名: ${file.name}`, 'warning');
           console.warn(`Unsupported file type: ${file.type}, file name: ${file.name}`);
         }
       }
     } catch (error) {
       console.error("处理拖拽文件时发生错误:", error);
-      alert("处理文件时发生错误，请重试。");
+      notify("处理文件时发生错误，请重试。", 'error');
     }
   };
 
-  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
   };
@@ -555,17 +494,16 @@ export default function Home() {
           // 重置状态
           setIsManualColoringMode(false);
           setSelectedColor(null);
-          setIsEraseMode(false);
           
           // 设置格子数量为导入的尺寸，避免重新映射时尺寸被修改
           setGranularity(gridDimensions.N);
           setGranularityInput(gridDimensions.N.toString());
           
-          alert(`成功导入CSV文件！图纸尺寸：${gridDimensions.N}x${gridDimensions.M}，共使用${Object.keys(colorCountsMap).length}种颜色。`);
+          notify(`成功导入 CSV 文件！图纸尺寸：${gridDimensions.N}×${gridDimensions.M}，共使用 ${Object.keys(colorCountsMap).length} 种颜色。`, 'success');
         })
         .catch(error => {
           console.error('CSV导入失败:', error);
-          alert(`CSV导入失败：${error.message}`);
+          notify(`CSV 导入失败：${error.message}`, 'error');
         });
     } else {
       // 处理图片文件
@@ -586,14 +524,13 @@ export default function Home() {
       };
       reader.onerror = () => {
           console.error("文件读取失败");
-          alert("无法读取文件。");
+          notify("无法读取文件。", 'error');
           setInitialGridColorKeys(new Set()); // ++ 重置初始键 ++
       }
       reader.readAsDataURL(file);
       // ++ Reset manual coloring mode when a new file is processed ++
       setIsManualColoringMode(false);
       setSelectedColor(null);
-      setIsEraseMode(false);
     }
   };
 
@@ -685,7 +622,7 @@ export default function Home() {
 
     if (currentPalette.length === 0) {
         console.error("Cannot pixelate: The selected color palette is empty (likely due to exclusions).");
-        alert("错误：当前可用颜色板为空（可能所有颜色都被排除了），无法处理图像。请尝试恢复部分颜色。");
+        notify("当前可用颜色板为空，无法处理图像。请恢复部分颜色。", 'error');
         // Clear previous results visually
         pixelatedCtx.clearRect(0, 0, pixelatedCanvas.width, pixelatedCanvas.height);
         setMappedPixelData(null);
@@ -704,7 +641,7 @@ export default function Home() {
     
     img.onerror = (error: Event | string) => {
       console.error("Image loading failed:", error); 
-      alert("无法加载图片。");
+      notify("无法加载图片。", 'error');
       setOriginalImageSrc(null); 
       setMappedPixelData(null); 
       setGridDimensions(null); 
@@ -885,7 +822,7 @@ export default function Home() {
             // --- 确保初始颜色键已记录 ---
             if (initialGridColorKeys.size === 0) {
                 console.error("Cannot exclude color: Initial grid color keys not yet calculated.");
-                alert("无法排除颜色，初始颜色数据尚未准备好，请稍候。");
+                notify("初始颜色数据尚未准备好，请稍候再试。", 'warning');
                 return;
             }
             console.log("Initial Grid Hex Keys:", Array.from(initialGridColorKeys));
@@ -917,7 +854,7 @@ export default function Home() {
             // 5. *** 关键检查 ***：如果在考虑所有排除项后，没有*初始*颜色可供映射，则阻止此次排除
             if (remapTargetPalette.length === 0) {
                 console.warn(`Cannot exclude color '${hexKey}'. No other valid colors from the initial grid remain after considering all current exclusions.`);
-                alert(`无法排除颜色 ${hexKey}，因为图中最初存在的其他可用颜色也已被排除。请先恢复部分其他颜色。`);
+                notify(`无法排除颜色 ${hexKey}，请先恢复部分其他颜色。`, 'warning');
                 console.log("---------");
                 return; // 停止排除过程
             }
@@ -928,7 +865,7 @@ export default function Home() {
             // 检查排除颜色的数据是否存在
              if (!excludedColorData || !mappedPixelData || !gridDimensions) {
                  console.error("Cannot exclude color: Missing data for remapping.");
-                 alert("无法排除颜色，缺少必要数据。");
+                 notify("无法排除颜色，缺少必要数据。", 'error');
                 console.log("---------");
                  return;
              }
@@ -1008,7 +945,7 @@ export default function Home() {
   // 一键去背景：识别边缘主色并洪水填充去除
   const handleAutoRemoveBackground = () => {
     if (!mappedPixelData || !gridDimensions) {
-      alert('请先生成图纸后再使用一键去背景。');
+      notify('请先生成图纸后再使用一键去背景。', 'warning');
       return;
     }
 
@@ -1031,7 +968,7 @@ export default function Home() {
     }
 
     if (borderCounts.size === 0) {
-      alert('边缘没有可识别的背景颜色。');
+      notify('边缘没有可识别的背景颜色。', 'info');
       return;
     }
 
@@ -1068,7 +1005,7 @@ export default function Home() {
     }
 
     if (stack.length === 0) {
-      alert('未找到可去除的背景区域。');
+      notify('未找到可去除的背景区域。', 'info');
       return;
     }
 
@@ -1108,85 +1045,16 @@ export default function Home() {
 
   // --- Canvas Interaction ---
 
-  // 洪水填充擦除函数
-  const floodFillErase = (startRow: number, startCol: number, targetKey: string) => {
-    if (!mappedPixelData || !gridDimensions) return;
-
-    const { N, M } = gridDimensions;
-    const newPixelData = mappedPixelData.map(row => row.map(cell => ({ ...cell })));
-    const visited = Array(M).fill(null).map(() => Array(N).fill(false));
-    
-    // 使用栈实现非递归洪水填充
-    const stack = [{ row: startRow, col: startCol }];
-    
-    while (stack.length > 0) {
-      const { row, col } = stack.pop()!;
-      
-      // 检查边界
-      if (row < 0 || row >= M || col < 0 || col >= N || visited[row][col]) {
-        continue;
-      }
-      
-      const currentCell = newPixelData[row][col];
-      
-      // 检查是否是目标颜色且不是外部区域
-      if (!currentCell || currentCell.isExternal || currentCell.key !== targetKey) {
-        continue;
-      }
-      
-      // 标记为已访问
-      visited[row][col] = true;
-      
-      // 擦除当前像素（设为透明）
-      newPixelData[row][col] = { ...transparentColorData };
-      
-      // 添加相邻像素到栈中
-      stack.push(
-        { row: row - 1, col }, // 上
-        { row: row + 1, col }, // 下
-        { row, col: col - 1 }, // 左
-        { row, col: col + 1 }  // 右
-      );
-    }
-    
-    // 更新状态
-    setMappedPixelData(newPixelData);
-    
-    // 重新计算颜色统计
-    if (colorCounts) {
-      const newColorCounts: { [hexKey: string]: { count: number; color: string } } = {};
-      let newTotalCount = 0;
-      
-      newPixelData.flat().forEach(cell => {
-        if (cell && !cell.isExternal && cell.key !== TRANSPARENT_KEY) {
-          const cellHex = cell.color.toUpperCase();
-          if (!newColorCounts[cellHex]) {
-            newColorCounts[cellHex] = {
-              count: 0,
-              color: cellHex
-            };
-          }
-          newColorCounts[cellHex].count++;
-          newTotalCount++;
-        }
-      });
-      
-      setColorCounts(newColorCounts);
-      setTotalBeadCount(newTotalCount);
-    }
-  };
-
-  // ++ Re-introduce the combined interaction handler ++
+  // 预览模式的悬停/点击提示。手动编辑由 onEditPointer 统一处理。
   const handleCanvasInteraction = (
-    clientX: number, 
-    clientY: number, 
-    pageX: number, 
-    pageY: number, 
+    clientX: number,
+    clientY: number,
+    pageX: number,
+    pageY: number,
     isClick: boolean = false,
     isTouchEnd: boolean = false
   ) => {
-    // 如果是触摸结束或鼠标离开事件，隐藏提示
-    if (isTouchEnd) {
+    if (isTouchEnd || isManualColoringMode) {
       setTooltipData(null);
       return;
     }
@@ -1202,169 +1070,42 @@ export default function Home() {
     const scaleY = canvas.height / rect.height;
     const canvasX = (clientX - rect.left) * scaleX;
     const canvasY = (clientY - rect.top) * scaleY;
-
     const { N, M } = gridDimensions;
     const cellWidthOutput = canvas.width / N;
     const cellHeightOutput = canvas.height / M;
+    const col = Math.floor(canvasX / cellWidthOutput);
+    const row = Math.floor(canvasY / cellHeightOutput);
 
-    const i = Math.floor(canvasX / cellWidthOutput);
-    const j = Math.floor(canvasY / cellHeightOutput);
-
-    if (i >= 0 && i < N && j >= 0 && j < M) {
-      const cellData = mappedPixelData[j][i];
-
-      // 颜色替换模式逻辑 - 选择源颜色
-      if (isClick && colorReplaceState.isActive && colorReplaceState.step === 'select-source') {
-        if (cellData && !cellData.isExternal && cellData.key && cellData.key !== TRANSPARENT_KEY) {
-          // 执行选择源颜色
-          handleCanvasColorSelect({
-            key: cellData.key,
-            color: cellData.color
-          });
-          setTooltipData(null);
-        }
-        return;
-      }
-
-      // 一键擦除模式逻辑
-      if (isClick && isEraseMode) {
-        if (cellData && !cellData.isExternal && cellData.key && cellData.key !== TRANSPARENT_KEY) {
-          // 执行洪水填充擦除
-          floodFillErase(j, i, cellData.key);
-          setIsEraseMode(false); // 擦除完成后退出擦除模式
-          setTooltipData(null);
-        }
-        return;
-      }
-
-      // Manual Coloring Logic - 保持原有的上色逻辑
-      if (isClick && isManualColoringMode && selectedColor) {
-        // 手动上色模式逻辑保持不变
-        // ...现有代码...
-        const newPixelData = mappedPixelData.map(row => row.map(cell => ({ ...cell })));
-        const currentCell = newPixelData[j]?.[i];
-
-        if (!currentCell) return;
-
-        const previousKey = currentCell.key;
-        const wasExternal = currentCell.isExternal;
-        
-        let newCellData: MappedPixel;
-        
-        if (selectedColor.key === TRANSPARENT_KEY) {
-          newCellData = { ...transparentColorData };
-        } else {
-          newCellData = { ...selectedColor, isExternal: false };
-        }
-
-        // Only update if state changes
-        if (newCellData.key !== previousKey || newCellData.isExternal !== wasExternal) {
-          newPixelData[j][i] = newCellData;
-          setMappedPixelData(newPixelData);
-
-          // Update color counts
-          if (colorCounts) {
-            const newColorCounts = { ...colorCounts };
-            let newTotalCount = totalBeadCount;
-
-            // 处理之前颜色的减少（使用hex值）
-            if (!wasExternal && previousKey !== TRANSPARENT_KEY) {
-              const previousCell = mappedPixelData[j][i];
-              const previousHex = previousCell?.color?.toUpperCase();
-              if (previousHex && newColorCounts[previousHex]) {
-                newColorCounts[previousHex].count--;
-                if (newColorCounts[previousHex].count <= 0) {
-                  delete newColorCounts[previousHex];
-              }
-              newTotalCount--;
-              }
-            }
-
-            // 处理新颜色的增加（使用hex值）
-            if (!newCellData.isExternal && newCellData.key !== TRANSPARENT_KEY) {
-              const newHex = newCellData.color.toUpperCase();
-              if (!newColorCounts[newHex]) {
-                newColorCounts[newHex] = {
-                  count: 0,
-                  color: newHex
-                };
-              }
-              newColorCounts[newHex].count++;
-              newTotalCount++;
-            }
-
-            setColorCounts(newColorCounts);
-            setTotalBeadCount(newTotalCount);
-          }
-        }
-        
-        // 上色操作后隐藏提示
-        setTooltipData(null);
-      }
-      // Tooltip Logic (非手动上色模式点击或悬停)
-      else if (!isManualColoringMode) {
-        // 只有单元格实际有内容（非背景/外部区域）才会显示提示
-        if (cellData && !cellData.isExternal && cellData.key) {
-          // 检查是否已经显示了提示框，并且是否点击的是同一个位置
-          // 对于移动设备，位置可能有细微偏差，所以我们检查单元格索引而不是具体坐标
-          if (tooltipData) {
-            // 如果已经有提示框，计算当前提示框对应的格子的索引
-            const tooltipRect = canvas.getBoundingClientRect();
-            
-            // 还原提示框位置为相对于canvas的坐标
-            const prevX = tooltipData.x; // 页面X坐标
-            const prevY = tooltipData.y; // 页面Y坐标
-            
-            // 转换为相对于canvas的坐标
-            const prevCanvasX = (prevX - tooltipRect.left) * scaleX;
-            const prevCanvasY = (prevY - tooltipRect.top) * scaleY;
-            
-            // 计算之前显示提示框位置对应的网格索引
-            const prevCellI = Math.floor(prevCanvasX / cellWidthOutput);
-            const prevCellJ = Math.floor(prevCanvasY / cellHeightOutput);
-            
-            // 如果点击的是同一个格子，则切换tooltip的显示/隐藏状态
-            if (i === prevCellI && j === prevCellJ) {
-              setTooltipData(null); // 隐藏提示
-              return;
-            }
-          }
-          
-          // 计算相对于main元素的位置
-          const mainElement = mainRef.current;
-          if (mainElement) {
-            const mainRect = mainElement.getBoundingClientRect();
-            // 计算相对于main元素的坐标
-            const relativeX = pageX - mainRect.left - window.scrollX;
-            const relativeY = pageY - mainRect.top - window.scrollY;
-            
-            // 如果是移动/悬停到一个新的有效格子，或者点击了不同的格子，则显示提示
-            setTooltipData({
-              x: relativeX,
-              y: relativeY,
-              key: cellData.key,
-              color: cellData.color,
-            });
-          } else {
-            // 如果没有找到main元素，使用原始坐标
-            setTooltipData({
-              x: pageX,
-              y: pageY,
-              key: cellData.key,
-              color: cellData.color,
-            });
-          }
-        } else {
-          // 如果点击/悬停在外部区域或背景上，隐藏提示
-          setTooltipData(null);
-        }
-      }
-    } else {
-      // 如果点击/悬停在画布外部，隐藏提示
+    if (col < 0 || col >= N || row < 0 || row >= M) {
       setTooltipData(null);
+      return;
     }
-  };
 
+    const cellData = mappedPixelData[row][col];
+    if (!cellData || cellData.isExternal || !cellData.key) {
+      setTooltipData(null);
+      return;
+    }
+
+    if (isClick && tooltipData) {
+      const previousCanvasX = (tooltipData.x - rect.left) * scaleX;
+      const previousCanvasY = (tooltipData.y - rect.top) * scaleY;
+      const previousCol = Math.floor(previousCanvasX / cellWidthOutput);
+      const previousRow = Math.floor(previousCanvasY / cellHeightOutput);
+      if (col === previousCol && row === previousRow) {
+        setTooltipData(null);
+        return;
+      }
+    }
+
+    const mainRect = mainRef.current?.getBoundingClientRect();
+    setTooltipData({
+      x: mainRect ? pageX - mainRect.left - window.scrollX : pageX,
+      y: mainRect ? pageY - mainRect.top - window.scrollY : pageY,
+      key: cellData.key,
+      color: cellData.color,
+    });
+  };
   const refreshManualEditorStats = useCallback((pixelData: MappedPixel[][]) => {
     const { colorCounts: nextCounts, totalCount } = recalculateColorStats(pixelData);
     setColorCounts(nextCounts);
@@ -1674,7 +1415,6 @@ export default function Home() {
     // 退出手动上色模式
     setIsManualColoringMode(false);
     setSelectedColor(null);
-    setIsEraseMode(false);
   };
 
   // ++ 新增：导出自定义色板配置 ++
@@ -1684,7 +1424,7 @@ export default function Home() {
       .map(([hexValue]) => hexValue);
 
     if (selectedHexValues.length === 0) {
-      alert("当前没有选中的颜色，无法导出。");
+      notify("当前没有选中的颜色，无法导出。", 'warning');
       return;
     }
 
@@ -1742,11 +1482,11 @@ export default function Home() {
 
         if (invalidHexValues.length > 0) {
           console.warn("导入时发现无效的hex值:", invalidHexValues);
-          alert(`导入完成，但以下颜色无效已被忽略：\n${invalidHexValues.join(', ')}`);
+          notify(`导入完成，但以下颜色无效已被忽略：\n${invalidHexValues.join(', ')}`, 'warning');
         }
 
         if (validHexValues.length === 0) {
-          alert("导入的文件中不包含任何有效的颜色。");
+          notify("导入的文件中不包含任何有效的颜色。", 'error');
           return;
         }
 
@@ -1757,11 +1497,11 @@ export default function Home() {
         const newSelections = presetToSelections(allHexValues, validHexValues);
         setCustomPaletteSelections(newSelections);
         setIsCustomPalette(true); // 标记为自定义
-        alert(`成功导入 ${validHexValues.length} 个颜色！`);
+        notify(`成功导入 ${validHexValues.length} 个颜色！`, 'success');
 
       } catch (error) {
         console.error("导入色板配置失败:", error);
-        alert(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        notify(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`, 'error');
       } finally {
         // 重置文件输入，以便可以再次导入相同的文件
         if (event.target) {
@@ -1770,7 +1510,7 @@ export default function Home() {
       }
     };
     reader.onerror = () => {
-      alert("读取文件失败。");
+      notify("读取文件失败。", 'error');
        // 重置文件输入
       if (event.target) {
         event.target.value = '';
@@ -1808,20 +1548,6 @@ export default function Home() {
     setManualEditorStatus(`已选择 ${colorData.color.toUpperCase()}，可以开始绘制`);
   };
 
-  // 新增：处理从画布选择源颜色
-  const handleCanvasColorSelect = (colorData: { key: string; color: string }) => {
-    if (colorReplaceState.isActive && colorReplaceState.step === 'select-source') {
-      // 高亮显示选中的颜色
-      setHighlightColorKey(colorData.color);
-      // 进入第二步：选择目标颜色
-      setColorReplaceState({
-        isActive: true,
-        step: 'select-target',
-        sourceColor: colorData
-      });
-    }
-  };
-
   // 生成完整色板数据（用户自定义色板中选中的所有颜色）
   const fullPaletteColors = useMemo(() => {
     const selectedColors: { key: string; color: string }[] = [];
@@ -1843,9 +1569,6 @@ export default function Home() {
 
   return (
     <>
-    {/* 添加自定义动画样式 */}
-    <style dangerouslySetInnerHTML={{ __html: floatAnimation }} />
-    
     {/* PWA 安装按钮 */}
     <InstallPWA />
     
@@ -1894,166 +1617,18 @@ export default function Home() {
     />
 
     {/* Apply dark mode styles to the main container */}
-    <div className="min-h-screen p-4 sm:p-6 flex flex-col items-center bg-gradient-to-b from-gray-50 to-white dark:from-gray-800 dark:to-gray-900 font-[family-name:var(--font-geist-sans)] overflow-x-hidden">
-      {/* Apply dark mode styles to the header */}
-      <header className="w-full md:max-w-4xl text-center mt-6 mb-8 sm:mt-8 sm:mb-10 relative overflow-hidden">
-        {/* Adjust decorative background colors for dark mode */}
-        <div className="absolute top-0 left-0 w-48 h-48 bg-blue-100 dark:bg-blue-900 rounded-full opacity-30 dark:opacity-20 blur-3xl"></div>
-        <div className="absolute bottom-0 right-0 w-48 h-48 bg-pink-100 dark:bg-pink-900 rounded-full opacity-30 dark:opacity-20 blur-3xl"></div>
-
-        {/* Adjust decorative dots color */}
-        <div className="absolute top-0 right-0 grid grid-cols-5 gap-1 opacity-20 dark:opacity-10">
-          {[...Array(25)].map((_, i) => (
-            <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-600"></div>
-          ))}
-        </div>
-        <div className="absolute bottom-0 left-0 grid grid-cols-5 gap-1 opacity-20 dark:opacity-10">
-          {[...Array(25)].map((_, i) => (
-            <div key={i} className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-600"></div>
-          ))}
-        </div>
-
-        {/* Header content - Ultra fancy integrated logo and titles */}
-        <div className="relative z-10 py-8">
-          {/* Integrated super fancy logo and title container */}
-          <div className="relative flex flex-col items-center">
-            {/* Ultra cute hyper-detailed 16-bead icon */}
-            <div className="relative mb-6 animate-float">
-              <div className="relative grid grid-cols-4 gap-2 p-4 bg-white/95 dark:bg-gray-800/95 rounded-3xl shadow-2xl border-4 border-gradient-to-r from-pink-300 via-purple-300 to-blue-300 dark:border-gray-600">
-                {['bg-red-400', 'bg-blue-400', 'bg-yellow-400', 'bg-green-400',
-                  'bg-purple-400', 'bg-pink-400', 'bg-orange-400', 'bg-teal-400',
-                  'bg-indigo-400', 'bg-cyan-400', 'bg-lime-400', 'bg-amber-400',
-                  'bg-rose-400', 'bg-sky-400', 'bg-emerald-400', 'bg-violet-400'].map((color, i) => (
-                  <div key={i} className="relative">
-                    <div
-                      className={`w-5 h-5 rounded-full ${color} transition-all duration-500 hover:scale-150 shadow-xl hover:shadow-2xl relative z-10`}
-                      style={{
-                        animation: `float ${2 + (i % 3)}s ease-in-out infinite ${i * 0.1}s`,
-                        boxShadow: `0 0 20px ${color.includes('red') ? '#f87171' : color.includes('blue') ? '#60a5fa' : color.includes('yellow') ? '#fbbf24' : color.includes('green') ? '#4ade80' : color.includes('purple') ? '#a855f7' : color.includes('pink') ? '#f472b6' : color.includes('orange') ? '#fb923c' : color.includes('teal') ? '#2dd4bf' : color.includes('indigo') ? '#818cf8' : color.includes('cyan') ? '#22d3ee' : color.includes('lime') ? '#84cc16' : color.includes('amber') ? '#f59e0b' : color.includes('rose') ? '#fb7185' : color.includes('sky') ? '#0ea5e9' : color.includes('emerald') ? '#10b981' : '#8b5cf6'}70`
-                      }}
-                    ></div>
-                    {/* Mini decorations around each bead */}
-                    {i % 4 === 0 && <div className="absolute -top-0.5 -right-0.5 w-1 h-1 bg-yellow-300 rounded-full animate-ping"></div>}
-                    {i % 4 === 1 && <div className="absolute -bottom-0.5 -left-0.5 w-0.5 h-0.5 bg-pink-300 rounded-full animate-pulse"></div>}
-                    {i % 4 === 2 && <div className="absolute -top-0.5 -left-0.5 w-0.5 h-0.5 bg-blue-300 rounded-full animate-bounce"></div>}
-                    {i % 4 === 3 && <div className="absolute -bottom-0.5 -right-0.5 w-1 h-1 bg-purple-300 rounded-full animate-spin"></div>}
-                  </div>
-                ))}
-              </div>
-              
-              {/* Super cute decorations around the icon */}
-              <div className="absolute -top-3 -right-4 w-3 h-3 bg-gradient-to-br from-yellow-400 to-pink-500 rounded-full animate-ping transform rotate-12"></div>
-              <div className="absolute -top-1 -right-2 w-2 h-2 bg-gradient-to-br from-pink-400 to-purple-500 rotate-45 animate-spin"></div>
-              <div className="absolute -bottom-3 -left-4 w-2.5 h-2.5 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-full animate-bounce"></div>
-              <div className="absolute -bottom-1 -left-2 w-1.5 h-1.5 bg-gradient-to-br from-green-400 to-teal-500 rotate-45 animate-pulse"></div>
-              <div className="absolute top-0 -right-1 w-1 h-1 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full animate-pulse delay-100"></div>
-              <div className="absolute -top-2 left-2 w-1 h-1 bg-gradient-to-br from-orange-400 to-red-500 rounded-full animate-bounce delay-200"></div>
-              <div className="absolute bottom-1 -right-3 w-1.5 h-1.5 bg-gradient-to-br from-indigo-400 to-purple-500 rotate-45 animate-spin delay-300"></div>
-              <div className="absolute -bottom-2 right-1 w-0.5 h-0.5 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full animate-ping delay-400"></div>
-              
-              {/* Extra tiny sparkles */}
-              <div className="absolute -top-4 left-1 w-0.5 h-0.5 bg-yellow-300 rounded-full animate-pulse delay-500"></div>
-              <div className="absolute top-2 -left-4 w-0.5 h-0.5 bg-pink-300 rounded-full animate-bounce delay-600"></div>
-              <div className="absolute -bottom-4 right-2 w-0.5 h-0.5 bg-blue-300 rounded-full animate-ping delay-700"></div>
-              <div className="absolute bottom-2 -right-5 w-0.5 h-0.5 bg-purple-300 rounded-full animate-pulse delay-800"></div>
-            </div>
-
-            {/* Ultra fancy brand name and tool name with hyper cute decorations */}
-            <div className="relative flex flex-col items-center space-y-3">
-              {/* Brand name - 七卡瓦 with ultra fancy effects */}
-              <div className="relative">
-                <h1 className="relative text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 via-blue-500 to-cyan-400 tracking-wider drop-shadow-2xl transform hover:scale-105 transition-transform duration-300 animate-bounce">
-                  尤婉玲
-                </h1>
-                
-                {/* Super fancy geometric decorations */}
-                <div className="absolute -top-4 -right-5 w-4 h-4 bg-gradient-to-br from-yellow-400 to-pink-500 rounded-full animate-spin transform rotate-12"></div>
-                <div className="absolute -top-2 -right-2 w-2.5 h-2.5 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full animate-ping"></div>
-                <div className="absolute -top-1 -right-0.5 w-1.5 h-1.5 bg-gradient-to-br from-purple-400 to-blue-500 rotate-45 animate-pulse delay-100"></div>
-                <div className="absolute -bottom-3 -left-5 w-4 h-4 bg-gradient-to-br from-blue-400 to-purple-500 rotate-45 animate-bounce delay-200"></div>
-                <div className="absolute -bottom-1 -left-2 w-2 h-2 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full animate-spin delay-300"></div>
-                <div className="absolute top-0 left-1/2 w-1.5 h-1.5 bg-gradient-to-br from-purple-400 to-pink-500 rounded-full animate-pulse delay-400"></div>
-                <div className="absolute -bottom-4 -right-3 w-3 h-3 bg-gradient-to-br from-cyan-400 to-teal-500 rounded-full animate-bounce delay-500"></div>
-                <div className="absolute top-1 -left-4 w-2 h-2 bg-gradient-to-br from-pink-400 to-red-500 rotate-45 animate-ping delay-600"></div>
-                
-                {/* Extra tiny sparkles around brand name */}
-                <div className="absolute -top-3 left-0 w-1 h-1 bg-yellow-300 rounded-full animate-pulse delay-700"></div>
-                <div className="absolute -top-2 right-3 w-0.5 h-0.5 bg-pink-300 rounded-full animate-bounce delay-800"></div>
-                <div className="absolute bottom-0 -left-1 w-0.5 h-0.5 bg-blue-300 rounded-full animate-ping delay-900"></div>
-                <div className="absolute bottom-1 right-0 w-1 h-1 bg-purple-300 rounded-full animate-pulse delay-1000"></div>
-              </div>
-              
-              {/* Tool name - 拼豆底稿生成器 with hyper cute style */}
-              <div className="relative">
-                <h2 className="relative text-xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-500 via-teal-500 via-green-500 to-emerald-400 tracking-widest transform hover:scale-102 transition-all duration-300">
-                  拼豆底稿生成器
-                </h2>
-                
-                {/* Super cute geometric shapes */}
-                <div className="absolute -top-3 -left-6 w-3.5 h-3.5 bg-gradient-to-br from-blue-400 to-teal-500 rounded-full animate-bounce delay-75"></div>
-                <div className="absolute -top-1 -left-3 w-2 h-2 bg-gradient-to-br from-teal-400 to-green-500 rounded-full animate-ping delay-150"></div>
-                <div className="absolute -top-0.5 -left-1 w-1 h-1 bg-gradient-to-br from-green-400 to-emerald-500 rotate-45 animate-pulse delay-225"></div>
-                <div className="absolute -top-3 -right-6 w-3 h-3 bg-gradient-to-br from-green-400 to-emerald-500 rotate-45 animate-spin delay-300"></div>
-                <div className="absolute -top-1 -right-3 w-1.5 h-1.5 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full animate-bounce delay-375"></div>
-                <div className="absolute -bottom-2 -right-3 w-2.5 h-2.5 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full animate-pulse delay-450"></div>
-                <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-gradient-to-br from-teal-400 to-blue-500 rotate-45 animate-spin delay-525"></div>
-                
-                {/* Mini sparkles around tool name */}
-                <div className="absolute -top-2 left-2 w-0.5 h-0.5 bg-blue-300 rounded-full animate-ping delay-600"></div>
-                <div className="absolute -top-1 right-2 w-1 h-1 bg-teal-300 rounded-full animate-pulse delay-675"></div>
-                <div className="absolute bottom-0 left-4 w-0.5 h-0.5 bg-green-300 rounded-full animate-bounce delay-750"></div>
-                <div className="absolute bottom-1 right-4 w-0.5 h-0.5 bg-emerald-300 rounded-full animate-pulse delay-825"></div>
-                <div className="absolute top-2 -left-2 w-0.5 h-0.5 bg-cyan-300 rounded-full animate-ping delay-900"></div>
-                <div className="absolute top-2 -right-2 w-1 h-1 bg-teal-300 rounded-full animate-bounce delay-975"></div>
-              </div>
-            </div>
-            
-            {/* Ultra cute floating elements constellation around the entire group */}
-            <div className="absolute -top-10 -left-10 w-3 h-3 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full animate-float"></div>
-            <div className="absolute -top-8 -left-6 w-1.5 h-1.5 bg-gradient-to-br from-purple-400 to-pink-500 rotate-45 animate-spin delay-100"></div>
-            <div className="absolute -top-6 -left-12 w-2 h-2 bg-gradient-to-br from-pink-400 to-red-500 rounded-full animate-bounce delay-200"></div>
-            
-            <div className="absolute -top-10 -right-10 w-2.5 h-2.5 bg-gradient-to-br from-blue-400 to-cyan-500 rounded-full animate-ping delay-300"></div>
-            <div className="absolute -top-6 -right-14 w-1 h-1 bg-gradient-to-br from-cyan-400 to-blue-500 rotate-45 animate-pulse delay-400"></div>
-            <div className="absolute -top-4 -right-8 w-3 h-3 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full animate-bounce delay-500"></div>
-            
-            <div className="absolute -bottom-10 -left-10 w-2 h-2 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full animate-pulse delay-600"></div>
-            <div className="absolute -bottom-8 -left-14 w-1.5 h-1.5 bg-gradient-to-br from-orange-400 to-red-500 rotate-45 animate-spin delay-700"></div>
-            <div className="absolute -bottom-6 -left-6 w-2.5 h-2.5 bg-gradient-to-br from-yellow-400 to-pink-500 rounded-full animate-float delay-800"></div>
-            
-            <div className="absolute -bottom-10 -right-10 w-3 h-3 bg-gradient-to-br from-green-400 to-teal-500 rotate-45 animate-bounce delay-900"></div>
-            <div className="absolute -bottom-8 -right-6 w-1 h-1 bg-gradient-to-br from-teal-400 to-cyan-500 rounded-full animate-ping delay-1000"></div>
-            <div className="absolute -bottom-6 -right-14 w-2 h-2 bg-gradient-to-br from-emerald-400 to-green-500 rounded-full animate-pulse delay-1100"></div>
-            
-            {/* Extra tiny magical sparkles */}
-            <div className="absolute -top-12 left-0 w-0.5 h-0.5 bg-yellow-300 rounded-full animate-ping delay-1200"></div>
-            <div className="absolute -top-2 -left-16 w-1 h-1 bg-pink-300 rounded-full animate-bounce delay-1300"></div>
-            <div className="absolute top-2 -right-18 w-0.5 h-0.5 bg-blue-300 rounded-full animate-pulse delay-1400"></div>
-            <div className="absolute -bottom-12 right-0 w-1 h-1 bg-purple-300 rounded-full animate-float delay-1500"></div>
-            <div className="absolute -bottom-2 -right-16 w-0.5 h-0.5 bg-green-300 rounded-full animate-ping delay-1600"></div>
-            <div className="absolute bottom-2 -left-18 w-1 h-1 bg-teal-300 rounded-full animate-bounce delay-1700"></div>
-          </div>
-          {/* Separator gradient remains the same */}
-          <div className="h-1 w-24 mx-auto my-3 bg-gradient-to-r from-blue-500 to-pink-500 rounded-full"></div>
-                    {/* Slogan with clean typography */}
-          <p className="mt-4 text-base sm:text-lg font-light text-gray-600 dark:text-gray-300 max-w-lg mx-auto text-center tracking-[0.1em] leading-relaxed">
-            让像素创意属于每一个人
-          </p>
-
-          
-          
-          {/* 添加小红书交流群链接 */}
-          
-        </div>
-      </header>
-
+    <div className="atelier-shell min-h-screen p-4 sm:p-6 flex flex-col items-center font-[family-name:var(--font-geist-sans)] overflow-x-hidden">
+      <BrandLogo />
       {/* Apply dark mode styles to the main section */}
-      <main ref={mainRef} className={`w-full md:max-w-4xl flex flex-col items-center space-y-5 sm:space-y-6 relative overflow-hidden ${isManualColoringMode ? 'manual-editor-main' : ''}`}>
+      <main ref={mainRef} className={`atelier-main w-full md:max-w-4xl flex flex-col items-center space-y-5 sm:space-y-6 relative overflow-hidden ${isManualColoringMode ? 'manual-editor-main' : ''}`}>
         {/* Apply dark mode styles to the Drop Zone */}
-        <div
+        <button
+          type="button"
           onDrop={handleDrop} onDragOver={handleDragOver} onDragEnter={handleDragOver}
           onClick={isMounted ? triggerFileInput : undefined}
-          className={`border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 sm:p-8 text-center ${isMounted ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-gray-800' : 'cursor-wait'} transition-all duration-300 w-full md:max-w-md flex flex-col justify-center items-center shadow-sm hover:shadow-md`}
+          disabled={!isMounted}
+          aria-label="上传图片或 CSV 文件"
+          className={`atelier-dropzone p-6 sm:p-8 text-center ${isMounted ? 'cursor-pointer hover:-translate-y-0.5' : 'cursor-wait'} transition-all duration-300 w-full md:max-w-md flex flex-col justify-center items-center`}
           style={{ minHeight: '130px' }}
         >
           {/* Icon color */}
@@ -2061,15 +1636,15 @@ export default function Home() {
              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
           {/* Text color */}
-          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">拖放图片到此处，或<span className="font-medium text-blue-600 dark:text-blue-400">点击选择文件</span></p>
+          <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">拖放图片到此处，或<span className="font-bold text-[var(--atelier-accent)]">点击选择文件</span></p>
           {/* Text color */}
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">支持 JPG, PNG 图片格式，或 CSV 数据文件</p>
-        </div>
+        </button>
 
         {/* 批量处理按钮 */}
         <button
           onClick={() => setIsBatchUploadOpen(true)}
-          className="w-full md:max-w-md text-xs sm:text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center justify-center gap-1.5 py-1"
+          className="w-full md:max-w-md text-xs sm:text-sm font-mono text-[var(--atelier-muted)] hover:text-[var(--atelier-accent)] transition-colors flex items-center justify-center gap-1.5 py-1"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -2079,19 +1654,19 @@ export default function Home() {
 
         {/* Apply dark mode styles to the Tip Box */}
         {!originalImageSrc && (
-          <div className="w-full md:max-w-md bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700 p-3 rounded-lg border border-blue-100 dark:border-gray-600 shadow-sm">
+          <div className="atelier-note w-full md:max-w-md p-3">
             {/* Icon color */}
-            <p className="text-xs text-indigo-700 dark:text-indigo-300 flex items-start">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0 text-blue-500 dark:text-blue-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <p className="text-xs text-[var(--atelier-ink)] flex items-start">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 flex-shrink-0 text-[var(--atelier-accent)] mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               {/* Text color */}
-              <span className="text-indigo-700 dark:text-indigo-300">小贴士：使用像素图进行转换前，请确保图片的边缘吻合像素格子的边界线，这样可以获得更精确的切割效果和更好的成品。</span>
+              <span>小贴士：使用像素图进行转换前，请确保图片的边缘吻合像素格子的边界线，这样可以获得更精确的切割效果和更好的成品。</span>
             </p>
           </div>
         )}
 
-                      <input type="file" accept="image/jpeg, image/png, .csv, text/csv, application/csv, text/plain" onChange={handleFileChange} ref={fileInputRef} className="hidden" />
+        <input aria-label="选择图片或 CSV 文件" type="file" accept="image/jpeg, image/png, .csv, text/csv, application/csv, text/plain" onChange={handleFileChange} ref={fileInputRef} className="hidden" tabIndex={-1} />
 
         {/* Controls and Output Area */}
         {originalImageSrc && (
@@ -2099,7 +1674,7 @@ export default function Home() {
             {/* ++ HIDE Control Row in manual mode ++ */}
             {!isManualColoringMode && (
               /* 修改控制面板网格布局 */
-              <div className="w-full md:max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+              <div className="atelier-panel w-full md:max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 sm:p-5">
                 {/* Granularity Input */}
                 <div className="flex-1">
                   {/* Label color */}
@@ -2113,7 +1688,7 @@ export default function Home() {
                       id="granularityInput"
                       value={granularityInput}
                       onChange={handleGranularityInputChange}
-                      className="w-full p-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 h-9 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
+                      className="atelier-field h-9 w-full p-1.5 text-sm"
                       min={MIN_GRID_GRANULARITY}
                       max={MAX_GRID_GRANULARITY}
                     />
@@ -2133,7 +1708,7 @@ export default function Home() {
                         id="similarityThresholdInput"
                         value={similarityThresholdInput}
                         onChange={handleSimilarityThresholdInputChange}
-                        className="w-full p-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 h-9 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
+                        className="atelier-field h-9 w-full p-1.5 text-sm"
                         min="0"
                         max="100"
                       />
@@ -2144,14 +1719,14 @@ export default function Home() {
                 <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleConfirmParameters}
-                    className="h-9 bg-blue-500 hover:bg-blue-600 text-white text-sm px-3 rounded-md whitespace-nowrap transition-colors duration-200 shadow-sm"
+                    className="atelier-button atelier-button--ink h-9 px-3 text-sm"
                   >
                     应用数字
                   </button>
                   <button
                     onClick={handleAutoRemoveBackground}
                     disabled={!mappedPixelData || !gridDimensions}
-                    className="inline-flex items-center justify-center h-9 px-3 text-sm rounded-md border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-800/40 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    className="inline-flex h-9 items-center justify-center whitespace-nowrap border-2 border-[var(--atelier-ink)] bg-[var(--atelier-signal)] px-3 text-sm font-bold text-[#1d1b18] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     一键去背景
                   </button>
@@ -2167,7 +1742,7 @@ export default function Home() {
                       id="pixelationModeSelect"
                       value={pixelationMode}
                       onChange={handlePixelationModeChange}
-                      className="w-full p-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 h-9 shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200"
+                      className="atelier-field h-9 w-full p-1.5 text-sm"
                     >
                       <option value={PixelationMode.Dominant} className="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200">卡通 (主色)</option>
                       <option value={PixelationMode.Average} className="bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-200">真实 (平均)</option>
@@ -2183,10 +1758,10 @@ export default function Home() {
                       <button
                         key={option.key}
                         onClick={() => setSelectedColorSystem(option.key as ColorSystem)}
-                        className={`px-3 py-2 text-sm rounded-lg border transition-all duration-200 flex-shrink-0 ${
+                        className={`flex-shrink-0 border-2 px-3 py-2 text-sm font-bold transition-all duration-200 ${
                           selectedColorSystem === option.key
-                            ? 'bg-blue-500 text-white border-blue-500 shadow-md transform scale-105'
-                            : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-gray-600'
+                            ? 'bg-[var(--atelier-accent)] text-[#1d1b18] border-[var(--atelier-ink)] shadow-[3px_3px_0_var(--atelier-ink)] transform -translate-y-0.5'
+                            : 'bg-[var(--atelier-surface)] text-[var(--atelier-ink)] border-[var(--atelier-ink)] hover:bg-[var(--atelier-signal)] hover:text-[#1d1b18]'
                         }`}
                       >
                         {option.name}
@@ -2199,7 +1774,7 @@ export default function Home() {
                 <div className="sm:col-span-2 mt-3">
                   <button
                     onClick={() => setIsCustomPaletteEditorOpen(true)}
-                    className="w-full py-2.5 px-3 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white font-medium rounded-lg shadow-sm transition-all duration-200 hover:shadow-md hover:from-blue-600 hover:to-purple-600"
+                    className="atelier-button atelier-button--accent w-full px-3 py-2.5"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486zM16 18H9.071l6-6H16a2 2 0 012 2v2a2 2 0 01-2 2z" clipRule="evenodd" />
@@ -2207,7 +1782,7 @@ export default function Home() {
                     管理色板 ({Object.values(customPaletteSelections).filter(Boolean).length} 色)
                   </button>
                   {isCustomPalette && (
-                    <p className="text-xs text-center text-blue-500 dark:text-blue-400 mt-1.5">当前使用自定义色板</p>
+                    <p className="text-xs text-center font-mono text-[var(--atelier-accent)] mt-1.5">当前使用自定义色板</p>
                   )}
                 </div>
               </div>
@@ -2270,7 +1845,7 @@ export default function Home() {
 
               {/* Canvas Preview Container */}
               {/* Apply dark mode styles */}
-              <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
+              <div className="atelier-panel p-4">
                 {/* 大画布提示信息 */}
                 {gridDimensions && gridDimensions.N > 100 && (
                   <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300 text-center">
@@ -2312,7 +1887,7 @@ export default function Home() {
         {/* ++ HIDE Color Counts in manual mode ++ */}
         {!isManualColoringMode && originalImageSrc && colorCounts && Object.keys(colorCounts).length > 0 && (
           // Apply dark mode styles to color counts container
-          <div className="w-full md:max-w-2xl mt-6 bg-white dark:bg-gray-800 p-4 rounded-lg shadow border border-gray-100 dark:border-gray-700 color-stats-panel">
+          <div className="atelier-panel w-full md:max-w-2xl mt-6 p-4 color-stats-panel">
             {/* Title color */}
             <h3 className="text-lg font-semibold mb-1 text-gray-700 dark:text-gray-200 text-center">
               去除杂色 
@@ -2330,17 +1905,18 @@ export default function Home() {
                   const colorHex = colorCounts[hexKey].color;
 
                   return (
-                    <li
-                      key={hexKey}
-                      onClick={() => handleToggleExcludeColor(hexKey)}
-                       // Apply dark mode styles for list items (normal and excluded)
-                      className={`flex items-center justify-between p-1.5 rounded cursor-pointer transition-colors ${ 
-                        isExcluded
-                          ? 'bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/60 opacity-60 dark:opacity-70' // Darker red background for excluded
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                      title={isExcluded ? `点击恢复 ${displayColorKey}` : `点击排除 ${displayColorKey}`}
-                    >
+                    <li key={hexKey}>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleExcludeColor(hexKey)}
+                        aria-pressed={isExcluded}
+                        className={`flex w-full cursor-pointer items-center justify-between border border-transparent p-1.5 transition-colors ${
+                          isExcluded
+                            ? 'bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/60 opacity-60 dark:opacity-70'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        title={isExcluded ? `点击恢复 ${displayColorKey}` : `点击排除 ${displayColorKey}`}
+                      >
                       <div className={`flex items-center space-x-2 ${isExcluded ? 'line-through' : ''}`}>
                         {/* Adjust color swatch border */}
                         <span
@@ -2352,6 +1928,7 @@ export default function Home() {
                       </div>
                       {/* Adjust text color for count (normal and excluded) */}
                       <span className={`text-xs ${isExcluded ? 'text-red-600 dark:text-red-400 line-through' : 'text-gray-600 dark:text-gray-300'}`}>{count} 颗</span>
+                      </button>
                     </li>
                   );
                 })}
@@ -2360,12 +1937,12 @@ export default function Home() {
                 <div className="mt-3">
                   <button
                     onClick={() => setShowExcludedColors(prev => !prev)}
-                    className="w-full text-xs py-1.5 px-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors flex items-center justify-between"
+                    className="atelier-button atelier-button--ink w-full justify-between px-2 py-1.5 text-xs"
                   >
                     <span>已排除的颜色 ({excludedColorKeys.size})</span>
                     <svg 
                       xmlns="http://www.w3.org/2000/svg" 
-                      className={`h-4 w-4 text-gray-500 dark:text-gray-400 transform transition-transform ${showExcludedColors ? 'rotate-180' : ''}`}
+                      className={`h-4 w-4 transform transition-transform ${showExcludedColors ? 'rotate-180' : ''}`}
                       fill="none" 
                       viewBox="0 0 24 24" 
                       stroke="currentColor"
@@ -2375,14 +1952,14 @@ export default function Home() {
                   </button>
                   
                   {showExcludedColors && (
-                    <div className="mt-2 border border-gray-200 dark:border-gray-700 rounded-md p-2 bg-gray-100 dark:bg-gray-800">
+                    <div className="mt-2 border border-[var(--atelier-line)] bg-[var(--atelier-surface)] p-2">
                       <div className="max-h-40 overflow-y-auto">
                         {Array.from(excludedColorKeys).length > 0 ? (
                           <ul className="space-y-1">
                             {Array.from(excludedColorKeys).sort(sortColorKeys).map(hexKey => {
                               const colorData = fullBeadPalette.find(color => color.hex.toUpperCase() === hexKey.toUpperCase());
                               return (
-                                <li key={hexKey} className="flex justify-between items-center p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
+                                <li key={hexKey} className="flex items-center justify-between p-1 hover:bg-[color-mix(in_srgb,var(--atelier-signal)_18%,transparent)]">
                                   <div className="flex items-center space-x-2">
                                     <span
                                       className="inline-block w-4 h-4 rounded border border-gray-400 dark:border-gray-500 flex-shrink-0"
@@ -2401,7 +1978,7 @@ export default function Home() {
                                       setSelectedColor(null);
                                       console.log(`Restored color: ${hexKey}`);
                                     }}
-                                    className="text-xs py-0.5 px-2 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-800/40"
+                                    className="atelier-button atelier-button--signal px-2 py-1 text-xs"
                                   >
                                     恢复
                                   </button>
@@ -2425,7 +2002,7 @@ export default function Home() {
                           setSelectedColor(null);
                           console.log("Restored all excluded colors");
                         }}
-                        className="mt-2 w-full text-xs py-1 px-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                        className="atelier-button atelier-button--accent mt-2 w-full px-2 py-1.5 text-xs"
                       >
                         一键恢复所有颜色
                       </button>
@@ -2462,46 +2039,48 @@ export default function Home() {
              </div>
          )}
 
-        {/* ++ RENDER Enter Manual Mode Button ONLY when NOT in manual mode (before downloads) ++ */}
         {!isManualColoringMode && originalImageSrc && mappedPixelData && gridDimensions && (
-            <div className="w-full md:max-w-2xl mt-4 space-y-3"> {/* Wrapper div */} 
-             {/* Manual Edit Mode Button */}
-             <button
-                onClick={enterManualEditor}
-                className={`w-full py-2.5 px-4 text-sm sm:text-base rounded-lg transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg hover:translate-y-[-1px]`}
-              >
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"> <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /> </svg>
-                 进入手动编辑模式
-             </button>
-
-             {/* Focus Mode Button */}
-             <button
-                onClick={handleEnterFocusMode}
-                className={`w-full py-2.5 px-4 text-sm sm:text-base rounded-lg transition-all duration-300 flex items-center justify-center gap-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-md hover:shadow-lg hover:translate-y-[-1px]`}
-              >
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                 </svg>
-                 进入专心拼豆模式（AplhaTest）
-             </button>
+          <section className="atelier-action-panel" aria-labelledby="atelier-action-title">
+            <div className="atelier-action-panel__header">
+              <h2 id="atelier-action-title" className="atelier-action-panel__title">图纸已生成，选择下一步</h2>
             </div>
-        )} {/* ++ End of RENDER Enter Manual Mode Button ++ */}
 
-        {/* ++ HIDE Download Buttons in manual mode ++ */}
-        {!isManualColoringMode && originalImageSrc && mappedPixelData && (
-            <div className="w-full md:max-w-2xl mt-4">
-              {/* 使用一个大按钮，现在所有的下载设置都通过弹窗控制 */}
+            <div className="atelier-action-panel__grid">
+              <button type="button" onClick={enterManualEditor} className="atelier-action atelier-action--ink">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+                <span className="atelier-action__copy">
+                  <strong>手动编辑图纸</strong>
+                </span>
+              </button>
+
+              <button type="button" onClick={handleEnterFocusMode} className="atelier-action atelier-action--signal">
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span className="atelier-action__copy">
+                  <strong>进入专心拼豆</strong>
+                </span>
+              </button>
+
               <button
+                type="button"
                 onClick={() => setIsDownloadSettingsOpen(true)}
-                disabled={!mappedPixelData || !gridDimensions || gridDimensions.N === 0 || gridDimensions.M === 0 || activeBeadPalette.length === 0}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white text-sm sm:text-base rounded-lg hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg hover:translate-y-[-1px] disabled:hover:translate-y-0 disabled:hover:shadow-md"
-               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                下载拼豆图纸
+                disabled={gridDimensions.N === 0 || gridDimensions.M === 0 || activeBeadPalette.length === 0}
+                className="atelier-action atelier-action--accent"
+              >
+                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span className="atelier-action__copy">
+                  <strong>下载拼豆图纸</strong>
+                </span>
               </button>
             </div>
-        )} {/* ++ End of HIDE Download Buttons ++ */}
+          </section>
+        )}
 
          {/* Tooltip Display (Needs update in GridTooltip.tsx) */}
          {tooltipData && (
@@ -2556,7 +2135,7 @@ export default function Home() {
       )}
 
       {/* Apply dark mode styles to the Footer */}
-      <footer className="w-full md:max-w-4xl mt-10 mb-6 py-6 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/50 rounded-lg shadow-inner">
+      <footer className="atelier-panel w-full md:max-w-4xl mt-10 mb-6 py-6 text-center text-xs sm:text-sm text-gray-500 dark:text-gray-400">
 
         {/* Donation button styles are likely fine */}
         

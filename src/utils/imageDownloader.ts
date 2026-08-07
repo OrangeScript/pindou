@@ -1,6 +1,10 @@
 import { GridDownloadOptions } from '../types/downloadTypes';
 import { MappedPixel, PaletteColor } from './pixelation';
 import { getDisplayColorKey, getColorKeyByHex, ColorSystem } from './colorSystemUtils';
+import { buildPatternFileName } from './fileNaming';
+import { notify } from './notifications';
+
+export { buildPatternFileName } from './fileNaming';
 
 type ColorCounts = { [key: string]: { count: number; color: string } };
 
@@ -29,25 +33,6 @@ const MAX_CANVAS_SIDE = 16000;
 const MAX_CANVAS_PIXELS = 180_000_000;
 const FULL_IMAGE_CELL_SIZE = 30;
 const SPLIT_IMAGE_CELL_SIZE = 36;
-const PATTERN_FILE_SUFFIX = '-拼豆图纸';
-
-export function buildPatternFileName(
-  sourceFileName: string | null | undefined,
-  extension: 'png' | 'csv',
-  partIndex?: number
-): string {
-  const normalizedName = sourceFileName?.trim().replace(/\\/g, '/').split('/').pop();
-  const lastDotIndex = normalizedName?.lastIndexOf('.') ?? -1;
-  const sourceName = normalizedName
-    ? lastDotIndex > 0
-      ? normalizedName.slice(0, lastDotIndex)
-      : normalizedName
-    : '未命名';
-  const partSuffix = partIndex === undefined ? '' : `-分图${partIndex}`;
-
-  return `${sourceName}${PATTERN_FILE_SUFFIX}${partSuffix}.${extension}`;
-}
-
 function getContrastColor(hex: string): string {
   const rgb = hexToRgb(hex);
   if (!rgb) return '#000000';
@@ -662,7 +647,7 @@ export function exportCsvData({
 }): void {
   if (!mappedPixelData || !gridDimensions) {
     console.error('导出失败: 映射数据或尺寸无效。');
-    alert('无法导出 CSV，数据未生成或无效。');
+    notify('无法导出 CSV，数据未生成或无效。', 'error');
     return;
   }
 
@@ -790,7 +775,7 @@ function validateDownloadInput({
 }): boolean {
   if (!mappedPixelData || !gridDimensions || gridDimensions.N === 0 || gridDimensions.M === 0 || activeBeadPalette.length === 0) {
     console.error('下载失败: 映射数据或尺寸无效。');
-    alert('无法下载图纸，数据未生成或无效。');
+    notify('无法下载图纸，数据未生成或无效。', 'error');
     return false;
   }
   return true;
@@ -838,7 +823,7 @@ export async function downloadImage({
     }
   } catch (e) {
     console.error('下载图纸失败:', e);
-    alert('无法生成图纸下载链接。');
+    notify('无法生成图纸下载链接。', 'error');
   }
 }
 
@@ -881,6 +866,6 @@ export async function downloadSplitImages({
     }
   } catch (e) {
     console.error('下载四分图失败:', e);
-    alert('无法生成四分图下载链接。');
+    notify('无法生成四分图下载链接。', 'error');
   }
 }

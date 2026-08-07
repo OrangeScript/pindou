@@ -73,11 +73,11 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
   return (
     <>
     <aside
-      className="drawing-toolbar fixed right-4 top-4 z-[100] w-[320px] overflow-hidden rounded-2xl border border-gray-200 bg-white/95 shadow-2xl backdrop-blur dark:border-gray-600 dark:bg-gray-800/95"
+      className="drawing-toolbar fixed right-4 top-4 z-[100] w-[320px] overflow-hidden rounded-2xl border border-[var(--atelier-ink)] bg-[var(--atelier-surface)]/95 shadow-[6px_6px_0_var(--atelier-ink)] backdrop-blur"
       aria-label="手动绘图工具栏"
       data-testid="drawing-toolbar"
     >
-      <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2.5 text-white">
+      <div className="flex items-center justify-between bg-[var(--atelier-ink)] px-3 py-2.5 text-[var(--atelier-surface)]">
         <div>
           <div className="text-sm font-semibold">图纸编辑器</div>
           <div className="text-[10px] text-blue-100">PC 滚轮/空格 · 平板双指手势</div>
@@ -140,7 +140,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               onClick={() => onToolChange(tool.id)}
               className={`relative flex min-h-14 touch-manipulation flex-col items-center justify-center rounded-xl border px-1 py-2 text-xs transition-all ${
                 activeTool === tool.id
-                  ? 'border-blue-500 bg-blue-500 text-white shadow-md'
+                  ? 'border-[var(--atelier-ink)] bg-[var(--atelier-accent)] text-[#1d1b18] shadow-md'
                   : 'border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
               }`}
               title={`${tool.label} (${tool.shortcut})`}
@@ -156,8 +156,8 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           ))}
         </div>
 
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-2.5 dark:border-indigo-800 dark:bg-indigo-950/30">
-          <div className="mb-2 flex items-center justify-between text-xs text-indigo-800 dark:text-indigo-200">
+        <div className="rounded-xl border border-[var(--atelier-line)] bg-[var(--atelier-signal)]/25 p-2.5">
+          <div className="mb-2 flex items-center justify-between text-xs text-[var(--atelier-ink)]">
             <span className="font-medium">平板手指操作</span>
             <span>触控笔始终绘制</span>
           </div>
@@ -165,7 +165,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <button
               type="button"
               onClick={() => onTouchInteractionModeChange('navigate')}
-              className={`min-h-11 touch-manipulation rounded-lg border px-2 py-2 text-xs ${touchInteractionMode === 'navigate' ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-indigo-200 bg-white text-indigo-700 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-200'}`}
+              className={`min-h-11 touch-manipulation rounded-lg border px-2 py-2 text-xs ${touchInteractionMode === 'navigate' ? 'border-[var(--atelier-ink)] bg-[var(--atelier-ink)] text-[var(--atelier-surface)]' : 'border-[var(--atelier-line)] bg-[var(--atelier-surface)] text-[var(--atelier-ink)]'}`}
               aria-pressed={touchInteractionMode === 'navigate'}
               data-testid="touch-mode-navigate"
             >
@@ -174,14 +174,14 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <button
               type="button"
               onClick={() => onTouchInteractionModeChange('draw')}
-              className={`min-h-11 touch-manipulation rounded-lg border px-2 py-2 text-xs ${touchInteractionMode === 'draw' ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-indigo-200 bg-white text-indigo-700 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-200'}`}
+              className={`min-h-11 touch-manipulation rounded-lg border px-2 py-2 text-xs ${touchInteractionMode === 'draw' ? 'border-[var(--atelier-ink)] bg-[var(--atelier-ink)] text-[var(--atelier-surface)]' : 'border-[var(--atelier-line)] bg-[var(--atelier-surface)] text-[var(--atelier-ink)]'}`}
               aria-pressed={touchInteractionMode === 'draw'}
               data-testid="touch-mode-draw"
             >
               ✍ 手指绘制
             </button>
           </div>
-          <p className="mt-2 text-[10px] leading-4 text-indigo-600 dark:text-indigo-300">两种模式都支持双指缩放和平移；第二根手指加入时会取消未完成笔画。</p>
+          <p className="mt-2 text-[10px] leading-4 text-[var(--atelier-muted)]">两种模式都支持双指缩放和平移；第二根手指加入时会取消未完成笔画。</p>
         </div>
 
         {(activeTool === 'brush' || activeTool === 'eraser') && (
@@ -205,6 +205,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               <button
                 type="button"
                 onClick={() => onBrushShapeChange('circle')}
+                aria-pressed={brushShape === 'circle'}
                 className={`min-h-11 touch-manipulation rounded-lg border py-1.5 text-xs ${brushShape === 'circle' ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
               >
                 ● 圆形
@@ -212,6 +213,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
               <button
                 type="button"
                 onClick={() => onBrushShapeChange('square')}
+                aria-pressed={brushShape === 'square'}
                 className={`min-h-11 touch-manipulation rounded-lg border py-1.5 text-xs ${brushShape === 'square' ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
               >
                 ■ 方形
@@ -252,6 +254,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
             <button
               type="button"
               onClick={onResetZoom}
+              aria-label="重置画布为百分之百"
               className="h-11 touch-manipulation rounded-lg bg-gray-100 px-2 text-[10px] hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
               title="重置为 100% (0)"
             >1:1</button>
@@ -262,6 +265,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           <button
             type="button"
             onClick={onTogglePalette}
+            aria-pressed={isPaletteOpen}
             className={`min-h-11 touch-manipulation rounded-lg border px-2 py-2 text-xs ${isPaletteOpen ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
           >
             🎨 {isPaletteOpen ? '收起色板' : '打开色板'}
@@ -269,6 +273,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           <button
             type="button"
             onClick={onToggleGrid}
+            aria-pressed={showGrid}
             className={`min-h-11 touch-manipulation rounded-lg border px-2 py-2 text-xs ${showGrid ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200' : 'border-gray-200 text-gray-600 dark:border-gray-600 dark:text-gray-300'}`}
           >
             # {showGrid ? '隐藏网格' : '显示网格'}
@@ -279,6 +284,7 @@ const FloatingToolbar: React.FC<FloatingToolbarProps> = ({
           <span
             className="h-7 w-7 flex-none rounded-lg border-2 border-white shadow"
             style={{ backgroundColor: selectedColor?.isExternal ? 'transparent' : selectedColor?.color ?? '#FFFFFF' }}
+            role="img"
             aria-label="当前颜色"
           />
           <p className="min-w-0 text-xs leading-4 text-gray-600 dark:text-gray-200" aria-live="polite">

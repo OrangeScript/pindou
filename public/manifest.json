@@ -3,10 +3,11 @@
   "short_name": "拼豆",
   "description": "拼豆底稿生成器，让你轻松制作精美的像素画作品",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#E8F4FD",
   "theme_color": "#5CA4F5",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192x192.png",

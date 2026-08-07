@@ -18,8 +18,8 @@ const ColorStatusBar: React.FC<ColorStatusBarProps> = ({
 }) => {
   if (!colorInfo) {
     return (
-      <div className="h-12 bg-white border-b border-gray-200 px-4 py-2 flex items-center">
-        <div className="text-gray-500">请选择颜色</div>
+      <div className="h-12 border-b-2 border-[var(--atelier-ink)] bg-[var(--atelier-surface)] px-4 py-2 flex items-center">
+        <div className="font-mono text-sm text-[var(--atelier-muted)]">请选择颜色</div>
       </div>
     );
   }
@@ -27,27 +27,27 @@ const ColorStatusBar: React.FC<ColorStatusBarProps> = ({
   const estimatedTime = Math.ceil((colorInfo.total - colorInfo.completed) * 0.1); // 假设每个格子0.5分钟
 
   return (
-    <div className="h-12 bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+    <div className="h-12 border-b-2 border-[var(--atelier-ink)] bg-[var(--atelier-surface)] px-4 py-2 flex items-center justify-between">
       <div className="flex items-center space-x-3">
         <div
-          className="w-8 h-8 rounded-full border-2 border-gray-300"
+          className="w-8 h-8 rounded-sm border-2 border-[var(--atelier-ink)] shadow-[2px_2px_0_var(--atelier-ink)]"
           style={{ backgroundColor: currentColor }}
         />
-        <div className="text-sm font-mono font-bold text-gray-700 px-2">
+        <div className="text-sm font-mono font-bold text-[var(--atelier-ink)] px-2">
           {colorInfo.name}
         </div>
         <div className="flex flex-col">
-          <div className="text-sm font-medium text-gray-800">
+          <div className="text-sm font-medium text-[var(--atelier-ink)]">
             {colorInfo.completed}/{colorInfo.total}
           </div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-[var(--atelier-muted)]">
             预计还需 {estimatedTime}分钟
           </div>
         </div>
       </div>
       
       <div className="text-right">
-        <div className="text-lg font-bold text-blue-600">
+        <div className="rounded-sm bg-[var(--atelier-signal)] px-2 py-0.5 font-mono text-lg font-black text-[#1d1b18]">
           {progressPercentage}%
         </div>
       </div>

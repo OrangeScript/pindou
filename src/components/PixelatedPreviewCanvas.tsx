@@ -41,6 +41,26 @@ interface RgbTuple {
   b: number;
 }
 
+interface PixelRenderCache {
+  sourceCanvas: HTMLCanvasElement | null;
+  sourceContext: CanvasRenderingContext2D | null;
+  imageData: ImageData | null;
+  previousData: MappedPixel[][] | null;
+  renderSignature: string;
+  rgbCache: Map<string, RgbTuple>;
+}
+
+function createPixelRenderCache(): PixelRenderCache {
+  return {
+    sourceCanvas: null,
+    sourceContext: null,
+    imageData: null,
+    previousData: null,
+    renderSignature: '',
+    rgbCache: new Map<string, RgbTuple>(),
+  };
+}
+
 function parseHexColor(hex: string, cache: Map<string, RgbTuple>): RgbTuple {
   const normalized = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toUpperCase() : '#FFFFFF';
   const cached = cache.get(normalized);
@@ -101,6 +121,7 @@ const drawPixelatedCanvas = (
   canvas: HTMLCanvasElement | null,
   dims: { N: number; M: number } | null,
   showGrid: boolean,
+  cache: PixelRenderCache,
   highlightColorKey?: string | null,
   isHighlighting?: boolean
 ) => {
@@ -116,26 +137,47 @@ const drawPixelatedCanvas = (
   const outputWidth = canvas.width;
   const outputHeight = canvas.height;
 
-  const sourceCanvas = document.createElement('canvas');
-  sourceCanvas.width = N;
-  sourceCanvas.height = M;
-  const sourceCtx = sourceCanvas.getContext('2d');
-  if (!sourceCtx) return;
+  if (!cache.sourceCanvas) {
+    cache.sourceCanvas = document.createElement('canvas');
+  }
+  const dimensionsChanged = cache.sourceCanvas.width !== N
+    || cache.sourceCanvas.height !== M
+    || !cache.sourceContext
+    || !cache.imageData;
+  if (dimensionsChanged) {
+    cache.sourceCanvas.width = N;
+    cache.sourceCanvas.height = M;
+    cache.sourceContext = cache.sourceCanvas.getContext('2d');
+    cache.imageData = cache.sourceContext?.createImageData(N, M) ?? null;
+    cache.previousData = null;
+  }
 
-  const rgbCache = new Map<string, RgbTuple>();
-  const externalRgb = parseHexColor(externalBackgroundColor, rgbCache);
-  const imageData = sourceCtx.createImageData(N, M);
+  const sourceCtx = cache.sourceContext;
+  const imageData = cache.imageData;
+  if (!sourceCtx || !imageData) return;
+
+  const externalRgb = parseHexColor(externalBackgroundColor, cache.rgbCache);
   const imageBuffer = imageData.data;
   const normalizedHighlight = highlightColorKey?.toUpperCase() ?? null;
+  const renderSignature = `${externalBackgroundColor}:${isHighlighting ? normalizedHighlight ?? '' : ''}`;
+  const requiresFullRaster = dimensionsChanged
+    || cache.previousData === null
+    || cache.renderSignature !== renderSignature;
+  let firstDirtyRow = M;
+  let lastDirtyRow = -1;
 
   for (let rowIndex = 0; rowIndex < M; rowIndex++) {
     const row = dataToDraw[rowIndex];
+    if (!requiresFullRaster && row === cache.previousData?.[rowIndex]) continue;
+    firstDirtyRow = Math.min(firstDirtyRow, rowIndex);
+    lastDirtyRow = rowIndex;
+
     for (let colIndex = 0; colIndex < N; colIndex++) {
       const cellData = row?.[colIndex];
       const index = (rowIndex * N + colIndex) * 4;
       let rgb = cellData?.isExternal
         ? externalRgb
-        : parseHexColor(cellData?.color ?? '#FFFFFF', rgbCache);
+        : parseHexColor(cellData?.color ?? '#FFFFFF', cache.rgbCache);
 
       if (isHighlighting && normalizedHighlight) {
         const shouldDim = cellData?.isExternal || cellData?.color?.toUpperCase() !== normalizedHighlight;
@@ -149,10 +191,23 @@ const drawPixelatedCanvas = (
     }
   }
 
-  sourceCtx.putImageData(imageData, 0, 0);
+  if (lastDirtyRow >= firstDirtyRow) {
+    sourceCtx.putImageData(
+      imageData,
+      0,
+      0,
+      0,
+      firstDirtyRow,
+      N,
+      lastDirtyRow - firstDirtyRow + 1
+    );
+  }
+  cache.previousData = dataToDraw;
+  cache.renderSignature = renderSignature;
+
   pixelatedCtx.clearRect(0, 0, outputWidth, outputHeight);
   pixelatedCtx.imageSmoothingEnabled = false;
-  pixelatedCtx.drawImage(sourceCanvas, 0, 0, outputWidth, outputHeight);
+  pixelatedCtx.drawImage(cache.sourceCanvas, 0, 0, outputWidth, outputHeight);
   if (showGrid) drawGridLines(pixelatedCtx, outputWidth, outputHeight, N, M, gridLineColor);
 };
 
@@ -194,6 +249,7 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
     viewportTop: number;
   } | null>(null);
   const suppressTouchRef = useRef(false);
+  const renderCacheRef = useRef<PixelRenderCache>(createPixelRenderCache());
   const [darkModeState, setDarkModeState] = useState<boolean | null>(null);
   const [isHighlighting, setIsHighlighting] = useState(false);
   const [hoveredCell, setHoveredCell] = useState<GridCellPosition | null>(null);
@@ -219,6 +275,7 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
         canvas,
         gridDimensions,
         showGrid,
+        renderCacheRef.current,
         highlightColorKey,
         isHighlighting
       );
@@ -513,6 +570,8 @@ const PixelatedPreviewCanvas: React.FC<PixelatedPreviewCanvasProps> = ({
       >
         <canvas
           ref={canvasRef}
+          role="img"
+          aria-label={isManualColoringMode ? '可编辑的拼豆图纸画布' : '生成的拼豆图纸预览'}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={event => finishPointer(event, false)}

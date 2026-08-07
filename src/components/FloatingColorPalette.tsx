@@ -170,7 +170,7 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
     >
       {/* 标题栏和控制按钮 */}
       <div
-        className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-t-xl cursor-move"
+        className="flex cursor-move items-center justify-between rounded-t-xl bg-[var(--atelier-ink)] p-3 text-[var(--atelier-surface)]"
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
@@ -184,9 +184,11 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
         <div className="flex items-center gap-1">
           {/* 关闭按钮 */}
           <button
+            type="button"
             onClick={onToggleOpen}
             className="p-1 hover:bg-white/20 rounded transition-colors"
             title="关闭调色盘"
+            aria-label="关闭调色盘"
           >
             <svg 
               xmlns="http://www.w3.org/2000/svg" 
@@ -215,6 +217,7 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
           {/* 色板切换 */}
           <div className="flex gap-2 mb-3">
             <button
+              type="button"
               onClick={onToggleFullPalette}
               className="w-full text-xs py-2 px-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             >
@@ -230,8 +233,11 @@ const FloatingColorPalette: React.FC<FloatingColorPaletteProps> = ({
               
               return (
                 <button
+                  type="button"
                   key={`${colorData.key}-${colorData.color}`}
                   onClick={() => handleColorClick(colorData)}
+                  aria-label={`选择颜色 ${displayKey}，${colorData.color}`}
+                  aria-pressed={isSelected}
                   className={`group relative aspect-square min-h-11 touch-manipulation rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
                     isSelected
                       ? 'border-blue-500 dark:border-blue-400 ring-2 ring-blue-200 dark:ring-blue-800 scale-110'

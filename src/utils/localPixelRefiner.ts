@@ -95,7 +95,7 @@ export async function refinePixelArt(
   });
 
   if (perfectPixelResult.refinedW === null || perfectPixelResult.refinedH === null) {
-    throw new Error('PerfectPixel 无法识别这张图片的像素网格，请填写“横向格数”后重试。');
+    throw new Error('无法识别这张图片的像素网格，请填写“横向格数”后重试。');
   }
 
   const [resultHeight, resultWidth, resultChannels] = perfectPixelResult.scaled.shape;

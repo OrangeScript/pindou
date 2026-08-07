@@ -7,6 +7,7 @@ import {
   BatchGlobalSettings,
   batchProcessAndDownload
 } from '../utils/batchProcessing';
+import { notify } from '../utils/notifications';
 
 interface BatchUploadModalProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ const BatchUploadModal: React.FC<BatchUploadModalProps> = ({
     });
     
     if (imageFiles.length === 0) {
-      alert('没有找到支持的图片文件（仅支持 JPG/PNG）');
+      notify('没有找到支持的图片文件（仅支持 JPG/PNG）', 'warning');
       return;
     }
     
@@ -410,7 +411,7 @@ const BatchUploadModal: React.FC<BatchUploadModalProps> = ({
             <button
               onClick={handleProcess}
               disabled={isProcessing || files.length === 0 || activeBeadPalette.length === 0}
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors text-sm disabled:opacity-50 flex items-center gap-1"
+              className="atelier-button atelier-button--signal px-4 py-2 text-sm"
             >
               {isProcessing ? (
                 <>
